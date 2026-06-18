@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { LoginForm } from './LoginForm'
 
 export default function LoginPage() {
   return (
@@ -9,8 +10,7 @@ export default function LoginPage() {
           Don&apos;t have an account?{' '}
           <Link href="/signup" className="underline">Sign up</Link>
         </p>
-        {/* TODO: wire up Supabase Auth form */}
-        <p className="text-sm text-zinc-400">[Login form coming soon]</p>
+        <LoginForm />
       </div>
     </main>
   )

@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from './server'
 
-export async function requireAuth(req: NextRequest) {
-  const supabase = createSupabaseServerClient()
-  const authHeader = req.headers.get('authorization')
-  const token = authHeader?.replace('Bearer ', '')
-  if (!token) return null
-
-  const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error || !user) return null
+// For use in Server Components and layouts.
+// Redirects to /login if no valid session; returns the authenticated user.
+export async function requireAuth() {
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
   return user
 }

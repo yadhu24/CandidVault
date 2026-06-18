@@ -1,5 +1,8 @@
-// Wrap all photographer-facing routes. Add auth guard here once Supabase session is wired.
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+import { requireAuth } from '@/lib/auth/guards'
+
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  await requireAuth()
+
   return (
     <div className="min-h-screen bg-zinc-50">
       <header className="border-b bg-white px-6 py-3">
