@@ -4,6 +4,7 @@
 
 export type UserRole = 'photographer' | 'admin'
 export type EventStatus = 'draft' | 'active' | 'closed'
+export type EventType = 'wedding' | 'engagement' | 'birthday' | 'corporate' | 'party' | 'other'
 export type MediaType = 'photo' | 'video'
 export type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed'
 export type ModerationStatus = 'pending' | 'approved' | 'rejected'
@@ -37,8 +38,10 @@ export interface Event {
   slug: string
   name: string
   description: string | null
+  eventType: EventType
   status: EventStatus
   eventDate: string | null
+  venue: string | null
   coverUploadId: string | null
   createdAt: string
   updatedAt: string

@@ -10,6 +10,9 @@ types.setTypeParser(types.builtins.INT8, (v) => (v === null ? null : Number(v)))
 const toIso = (v: string | null) => (v === null ? null : new Date(v).toISOString())
 types.setTypeParser(types.builtins.TIMESTAMPTZ, toIso)
 types.setTypeParser(types.builtins.TIMESTAMP, toIso)
+// Keep DATE as the raw 'YYYY-MM-DD' string — avoids the timezone shift that
+// pg's default Date parsing introduces for calendar-only values (e.g. event_date).
+types.setTypeParser(types.builtins.DATE, (v) => v)
 
 let pool: Pool | undefined
 

@@ -43,9 +43,10 @@ async function main() {
     )
 
     await client.query(
-      `INSERT INTO events (id, photographer_id, slug, name, description, status, event_date)
-       VALUES ($1, $2, 'demo-wedding', 'Demo Wedding',
-               'Sample event for local development.', 'active', '2026-06-01')
+      `INSERT INTO events
+         (id, photographer_id, slug, name, event_type, description, status, event_date, venue)
+       VALUES ($1, $2, 'demo-wedding', 'Demo Wedding', 'wedding',
+               'Sample event for local development.', 'active', '2026-06-01', 'The Grand Hall')
        ON CONFLICT (id) DO NOTHING`,
       [ID.event, ID.user],
     )

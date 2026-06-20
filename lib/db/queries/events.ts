@@ -1,26 +1,30 @@
 import { type PageOptions, query, queryOne, resolvePage } from '../query'
-import type { Event, EventQrCode, EventStatus } from '../types'
+import type { Event, EventQrCode, EventStatus, EventType } from '../types'
 
 export interface CreateEventInput {
   photographerId: string
   slug: string
   name: string
+  eventType: EventType
   description?: string | null
   eventDate?: string | null
+  venue?: string | null
   status?: EventStatus
 }
 
 export async function createEvent(input: CreateEventInput): Promise<Event> {
   const row = await queryOne<Event>(
-    `INSERT INTO events (photographer_id, slug, name, description, event_date, status)
-     VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'draft'))
+    `INSERT INTO events (photographer_id, slug, name, event_type, description, event_date, venue, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 'draft'))
      RETURNING *`,
     [
       input.photographerId,
       input.slug,
       input.name,
+      input.eventType,
       input.description ?? null,
       input.eventDate ?? null,
+      input.venue ?? null,
       input.status ?? null,
     ],
   )
@@ -29,6 +33,18 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
 
 export function getEventById(id: string): Promise<Event | null> {
   return queryOne<Event>(`SELECT * FROM events WHERE id = $1`, [id])
+}
+
+// Ownership-scoped fetch: returns null when the event doesn't exist OR isn't
+// owned by this photographer, so callers can treat both as "not found".
+export function getEventByIdForPhotographer(
+  id: string,
+  photographerId: string,
+): Promise<Event | null> {
+  return queryOne<Event>(`SELECT * FROM events WHERE id = $1 AND photographer_id = $2`, [
+    id,
+    photographerId,
+  ])
 }
 
 export function getEventBySlug(slug: string): Promise<Event | null> {
