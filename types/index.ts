@@ -1,30 +1,4 @@
-export type EventStatus = 'draft' | 'active' | 'closed'
-export type MediaStatus = 'pending' | 'processing' | 'ready' | 'failed'
-export type MediaType = 'photo' | 'video'
-
-export interface Event {
-  id: string
-  slug: string
-  name: string
-  description: string | null
-  photographerId: string
-  status: EventStatus
-  coverImageKey: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface MediaAsset {
-  id: string
-  eventId: string
-  uploaderName: string | null
-  storageKey: string
-  thumbnailKey: string | null
-  mediaType: MediaType
-  mimeType: string
-  fileSizeBytes: number
-  status: MediaStatus
-  metadata: Record<string, unknown> | null
-  createdAt: string
-  updatedAt: string
-}
+// Shared domain types. The database row types are the source of truth and live
+// in lib/db/types.ts; they are re-exported here so app/worker code can import
+// them from the conventional `@/types` surface.
+export * from '../lib/db/types'
