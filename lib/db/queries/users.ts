@@ -20,6 +20,19 @@ export async function createUser(input: CreateUserInput): Promise<User> {
   return row as User
 }
 
+// Idempotent: used to bootstrap the app-side user row from a Supabase Auth
+// identity on first authenticated request. `id` is the Supabase auth user id.
+export async function ensureUser(input: { id: string; email: string }): Promise<User> {
+  const row = await queryOne<User>(
+    `INSERT INTO users (id, email)
+     VALUES ($1, lower($2))
+     ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email
+     RETURNING *`,
+    [input.id, input.email],
+  )
+  return row as User
+}
+
 export function getUserById(id: string): Promise<User | null> {
   return queryOne<User>(`SELECT * FROM users WHERE id = $1`, [id])
 }
@@ -64,4 +77,17 @@ export function getPhotographerProfile(userId: string): Promise<PhotographerProf
   return queryOne<PhotographerProfile>(`SELECT * FROM photographer_profiles WHERE user_id = $1`, [
     userId,
   ])
+}
+
+// Idempotent: creates an empty profile on first bootstrap, otherwise returns the
+// existing one untouched (the no-op DO UPDATE lets RETURNING surface the row).
+export async function ensurePhotographerProfile(userId: string): Promise<PhotographerProfile> {
+  const row = await queryOne<PhotographerProfile>(
+    `INSERT INTO photographer_profiles (user_id)
+     VALUES ($1)
+     ON CONFLICT (user_id) DO UPDATE SET user_id = photographer_profiles.user_id
+     RETURNING *`,
+    [userId],
+  )
+  return row as PhotographerProfile
 }
