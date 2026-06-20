@@ -96,6 +96,20 @@ export function getQrCodeByToken(token: string): Promise<EventQrCode | null> {
   return queryOne<EventQrCode>(`SELECT * FROM event_qr_codes WHERE token = $1`, [token])
 }
 
+// Idempotent: ensures the event has its (single, MVP) QR row. Token is the event
+// slug — the public link resolves by slug, and slug uniqueness gives token
+// uniqueness. The schema still allows multiple QR codes per event for later.
+export async function ensureEventQrCode(eventId: string, token: string): Promise<EventQrCode> {
+  const row = await queryOne<EventQrCode>(
+    `INSERT INTO event_qr_codes (event_id, token)
+     VALUES ($1, $2)
+     ON CONFLICT (token) DO UPDATE SET token = event_qr_codes.token
+     RETURNING *`,
+    [eventId, token],
+  )
+  return row as EventQrCode
+}
+
 export function listQrCodesByEvent(eventId: string): Promise<EventQrCode[]> {
   return query<EventQrCode>(
     `SELECT * FROM event_qr_codes WHERE event_id = $1 ORDER BY created_at`,

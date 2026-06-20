@@ -51,9 +51,10 @@ async function main() {
       [ID.event, ID.user],
     )
 
+    // MVP convention: one QR per event, token = event slug (see lib/events).
     await client.query(
-      `INSERT INTO event_qr_codes (id, event_id, token, label, scan_count)
-       VALUES ($1, $2, 'demo-qr-entrance', 'Entrance', 12)
+      `INSERT INTO event_qr_codes (id, event_id, token, scan_count)
+       VALUES ($1, $2, 'demo-wedding', 12)
        ON CONFLICT (id) DO NOTHING`,
       [ID.qr, ID.event],
     )
