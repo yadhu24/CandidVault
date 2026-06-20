@@ -1,5 +1,6 @@
 import { formatEventDate } from '@/lib/events/format'
 import { resolvePublicEvent } from '@/lib/events/service'
+import { GuestUploader } from './GuestUploader'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -44,7 +45,7 @@ export default async function GuestUploadPage({ params }: Props) {
           {event.venue ? ` · ${event.venue}` : ''}
         </p>
       </div>
-      <UploadShell />
+      <GuestUploader slug={event.slug} />
     </PublicShell>
   )
 }
@@ -64,25 +65,6 @@ function StateCard({ title, message }: { title: string; message: string }) {
     <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center">
       <h1 className="font-semibold text-zinc-900">{title}</h1>
       <p className="mt-2 text-sm text-zinc-500">{message}</p>
-    </div>
-  )
-}
-
-// Placeholder shell only — the real uploader (presign + direct-to-R2) lands in a
-// later task.
-function UploadShell() {
-  return (
-    <div className="rounded-lg border-2 border-dashed border-zinc-300 bg-white p-8 text-center">
-      <h2 className="font-semibold text-zinc-900">Share your photos &amp; videos</h2>
-      <p className="mt-1 text-sm text-zinc-500">Help capture every moment of the event.</p>
-      <button
-        type="button"
-        disabled
-        className="mt-4 inline-flex h-10 items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white opacity-50"
-      >
-        Select files
-      </button>
-      <p className="mt-3 text-xs text-zinc-400">Uploading will be enabled here soon.</p>
     </div>
   )
 }
