@@ -16,9 +16,26 @@ types.setTypeParser(types.builtins.DATE, (v) => v)
 
 let pool: Pool | undefined
 
+// Managed Postgres (Supabase, etc.) requires TLS; local dev does not. Decide by
+// host so localhost stays plain and hosted connections are encrypted. Set
+// DATABASE_SSL=disable to force it off.
+function requiresSsl(connectionString: string | undefined): boolean {
+  if (!connectionString || process.env.DATABASE_SSL === 'disable') return false
+  try {
+    const host = new URL(connectionString).hostname
+    return host !== 'localhost' && host !== '127.0.0.1' && host !== '::1'
+  } catch {
+    return false
+  }
+}
+
 export function getDb(): Pool {
   if (!pool) {
-    pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    const connectionString = process.env.DATABASE_URL
+    pool = new Pool({
+      connectionString,
+      ssl: requiresSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+    })
   }
   return pool
 }
