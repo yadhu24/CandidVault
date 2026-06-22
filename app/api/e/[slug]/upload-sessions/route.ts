@@ -3,11 +3,13 @@ import { clientIp, rateLimit } from '@/lib/http/rate-limit'
 import { resolvePublicEvent } from '@/lib/events/service'
 import {
   CreateUploadSessionSchema,
+  MULTIPART_THRESHOLD_BYTES,
+  UPLOAD_PART_SIZE_BYTES,
   maxBytesForMime,
   mediaTypeForMime,
 } from '@/lib/validation/media'
 import { buildOriginalObjectKey } from '@/lib/storage/keys'
-import { createUploadPresignedUrl } from '@/lib/storage'
+import { createMultipartUpload, createUploadPresignedUrl } from '@/lib/storage'
 import { getOrCreateGuestSession } from '@/lib/uploads/guest-session'
 import { sanitizeFilename } from '@/lib/uploads/filename'
 import { signUploadTicket } from '@/lib/uploads/ticket'
@@ -57,8 +59,7 @@ export async function POST(request: Request, { params }: Params) {
     const session = await getOrCreateGuestSession(event.id, cleanUploaderName)
     const key = buildOriginalObjectKey(event.id, contentType)
 
-    const uploadUrl = await createUploadPresignedUrl(key, contentType)
-    const ticket = signUploadTicket({
+    const base = {
       key,
       eventId: event.id,
       guestSessionId: session.id,
@@ -67,9 +68,22 @@ export async function POST(request: Request, { params }: Params) {
       maxBytes,
       filename: cleanName,
       uploaderName: cleanUploaderName,
-    })
+    }
 
-    return apiJson({ uploadUrl, ticket }, 201)
+    // Large files upload in resumable parts; small ones use a single PUT. Either
+    // way the key lives only inside the signed ticket.
+    if (fileSizeBytes > MULTIPART_THRESHOLD_BYTES) {
+      const uploadId = await createMultipartUpload(key, contentType)
+      const ticket = signUploadTicket({
+        ...base,
+        multipart: { uploadId, partSize: UPLOAD_PART_SIZE_BYTES },
+      })
+      return apiJson({ mode: 'multipart', partSize: UPLOAD_PART_SIZE_BYTES, ticket }, 201)
+    }
+
+    const uploadUrl = await createUploadPresignedUrl(key, contentType)
+    const ticket = signUploadTicket(base)
+    return apiJson({ mode: 'single', uploadUrl, ticket }, 201)
   } catch (err) {
     console.error('[upload-sessions] unexpected error', { name: (err as { name?: string })?.name })
     return apiError(500, 'INTERNAL_ERROR', 'Could not start the upload. Please try again.')

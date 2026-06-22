@@ -3,8 +3,8 @@ import { clientIp, rateLimit } from '@/lib/http/rate-limit'
 import { resolvePublicEvent } from '@/lib/events/service'
 import { registerUpload } from '@/lib/db/queries/uploads'
 import { ConfirmUploadSchema } from '@/lib/validation/media'
-import { deleteObject, headObject } from '@/lib/storage'
-import { verifyUploadTicket } from '@/lib/uploads/ticket'
+import { abortMultipartUpload, completeMultipartUpload, deleteObject, headObject } from '@/lib/storage'
+import { verifyUploadTicket, type UploadTicketPayload } from '@/lib/uploads/ticket'
 
 interface Params {
   params: Promise<{ slug: string }>
@@ -14,17 +14,33 @@ async function safeDelete(key: string) {
   try {
     await deleteObject(key)
   } catch (err) {
-    // Best-effort cleanup; a leftover unregistered object is swept by lifecycle.
     console.error('[uploads.confirm] failed to delete rejected object', {
       code: (err as { name?: string })?.name,
     })
   }
 }
 
+// Releases an upload we won't register: a completed object is deleted, an
+// in-progress multipart upload is aborted (no object exists yet).
+async function cleanupAbandoned(ticket: UploadTicketPayload) {
+  if (ticket.multipart) {
+    try {
+      await abortMultipartUpload(ticket.key, ticket.multipart.uploadId)
+    } catch (err) {
+      console.error('[uploads.confirm] failed to abort multipart upload', {
+        code: (err as { name?: string })?.name,
+      })
+    }
+    return
+  }
+  await safeDelete(ticket.key)
+}
+
 // POST /api/e/[slug]/uploads
-// Confirms a completed direct-to-R2 upload: verifies the signed ticket, re-checks
-// the event, verifies the real object against the limits (deleting it if it
-// violates them), then records the upload in pending moderation state.
+// Confirms a completed upload. For single PUTs: verify the object exists. For
+// multipart: assemble the parts first. Either way, re-check the event, validate
+// the REAL bytes against the limits (deleting on violation), then record the
+// upload in pending moderation state.
 export async function POST(request: Request, { params }: Params) {
   const { slug } = await params
 
@@ -47,12 +63,30 @@ export async function POST(request: Request, { params }: Params) {
     // The event must still be active and must match the ticket's event.
     const resolution = await resolvePublicEvent(slug)
     if (resolution.state !== 'ok' || resolution.event.id !== ticket.eventId) {
-      await safeDelete(ticket.key)
+      await cleanupAbandoned(ticket)
       return apiError(403, 'EVENT_NOT_ACCEPTING_UPLOADS', 'This event is not accepting uploads.')
     }
 
-    // Prove the object was actually uploaded, and re-validate the REAL bytes — the
-    // browser can't be trusted on size/type even though the URL pinned the type.
+    // Multipart: assemble the parts into the final object before validating.
+    if (ticket.multipart) {
+      const parts = parsed.data.parts
+      if (!parts || parts.length === 0) {
+        await cleanupAbandoned(ticket)
+        return apiError(422, 'INVALID_CONFIRM_REQUEST', 'Missing uploaded parts.')
+      }
+      try {
+        await completeMultipartUpload(ticket.key, ticket.multipart.uploadId, parts)
+      } catch (err) {
+        console.error('[uploads.confirm] multipart completion failed', {
+          name: (err as { name?: string })?.name,
+        })
+        await cleanupAbandoned(ticket)
+        return apiError(422, 'UPLOAD_REJECTED', 'The upload could not be assembled. Please retry.')
+      }
+    }
+
+    // Prove the object exists, and re-validate the REAL bytes — the browser can't
+    // be trusted on size/type even though the URL pinned the type.
     const head = await headObject(ticket.key)
     if (!head) {
       return apiError(409, 'UPLOAD_NOT_FOUND', 'No uploaded file was found for this ticket.')

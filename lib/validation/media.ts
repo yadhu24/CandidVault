@@ -63,6 +63,28 @@ export const CreateUploadSessionSchema = z.object({
 
 export type CreateUploadSessionInput = z.infer<typeof CreateUploadSessionSchema>
 
+// Files larger than this are uploaded in parts (resumable); smaller ones use a
+// single presigned PUT. Part size is >= R2's 5 MB minimum for non-final parts.
+export const MULTIPART_THRESHOLD_BYTES = 10 * 1024 * 1024 // 10 MB
+export const UPLOAD_PART_SIZE_BYTES = 8 * 1024 * 1024 // 8 MB
+
+// Browser requests presigned URLs for the part numbers it still needs (this is
+// what makes a dropped connection resumable — only missing parts are re-fetched).
+export const PresignPartsSchema = z.object({
+  ticket: z.string().min(1).max(8192),
+  partNumbers: z.array(z.number().int().min(1).max(10_000)).min(1).max(1000),
+})
+
+// Confirm accepts either a single-PUT confirm (ticket only) or a multipart
+// completion (ticket + the uploaded parts' numbers + ETags).
 export const ConfirmUploadSchema = z.object({
-  ticket: z.string().min(1).max(4096),
+  ticket: z.string().min(1).max(8192),
+  parts: z
+    .array(
+      z.object({
+        partNumber: z.number().int().min(1).max(10_000),
+        etag: z.string().min(1).max(256),
+      }),
+    )
+    .optional(),
 })

@@ -17,6 +17,10 @@ export interface UploadTicketPayload {
   maxBytes: number
   filename: string
   uploaderName: string | null
+  // Present for multipart uploads only. Binds the server-issued R2 upload id (and
+  // part size) into the signed ticket, so the browser can presign parts and
+  // complete the upload without ever being trusted with the key or upload id.
+  multipart?: { uploadId: string; partSize: number }
   exp: number
 }
 

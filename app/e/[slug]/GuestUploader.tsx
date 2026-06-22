@@ -1,14 +1,22 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Dropzone, Input, UploadProgressItem } from '@/components/ui'
 import { CameraIcon, CheckIcon, SparkleIcon } from '@/components/ui/icons'
+import { compressImage } from '@/lib/uploads/compress-client'
 import { isAllowedMimeType, maxBytesForMime } from '@/lib/validation/media'
 
-// Same set the server validates against; also drives the native picker filter.
 const ACCEPT = 'image/jpeg,image/png,image/heic,image/webp,video/mp4,video/quicktime'
 
 type ItemStatus = 'queued' | 'uploading' | 'finalizing' | 'done' | 'error'
+
+// In-session multipart resume state: which parts already uploaded (by ETag).
+interface MultipartState {
+  ticket: string
+  partSize: number
+  total: number
+  done: Record<number, string>
+}
 
 interface UploadItem {
   id: string
@@ -17,14 +25,34 @@ interface UploadItem {
   progress: number
   error?: string
   thumbUrl?: string
+  mp?: MultipartState
 }
 
-// fetch() can't report upload progress, so the direct-to-R2 PUT uses XHR.
-function putWithProgress(
-  url: string,
-  file: File,
-  onProgress: (percent: number) => void,
-): Promise<void> {
+class TicketExpiredError extends Error {}
+
+const pctOf = (bytes: number, total: number) => Math.min(100, Math.round((bytes / total) * 100))
+const partLen = (file: File, partSize: number, n: number) =>
+  Math.min(partSize, file.size - (n - 1) * partSize)
+
+// --- network helpers ------------------------------------------------------
+
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    return (await res.json())?.error?.message ?? fallback
+  } catch {
+    return fallback
+  }
+}
+async function readErrorCode(res: Response): Promise<string | null> {
+  try {
+    return (await res.clone().json())?.error?.code ?? null
+  } catch {
+    return null
+  }
+}
+
+// Single PUT (small files); pins Content-Type to match the signed URL.
+function putWithProgress(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('PUT', url)
@@ -42,65 +70,203 @@ function putWithProgress(
   })
 }
 
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+// One multipart part; returns its ETag (needs R2 CORS ExposeHeaders: ETag).
+function putPartWithProgress(
+  url: string,
+  blob: Blob,
+  onLoaded: (loaded: number) => void,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onLoaded(e.loaded)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const etag = xhr.getResponseHeader('ETag')
+        if (etag) resolve(etag)
+        else reject(new Error('Missing ETag — check R2 CORS ExposeHeaders'))
+      } else reject(new Error(`Part failed (HTTP ${xhr.status})`))
+    }
+    xhr.onerror = () => reject(new Error('Network error during upload'))
+    xhr.onabort = () => reject(new Error('Upload was interrupted'))
+    xhr.send(blob)
+  })
+}
+
+// --- finish-later reminder (cross-session, best-effort localStorage) -------
+
+const pendingKey = (slug: string) => `cv:pending:${slug}`
+function loadPending(slug: string): string[] {
   try {
-    const body = await res.json()
-    return body?.error?.message ?? fallback
+    const raw = localStorage.getItem(pendingKey(slug))
+    return raw ? (JSON.parse(raw) as string[]) : []
   } catch {
-    return fallback
+    return [] // localStorage may be unavailable (private mode); reminder is optional.
   }
 }
+function writePending(slug: string, names: string[]): void {
+  try {
+    localStorage.setItem(pendingKey(slug), JSON.stringify(names))
+  } catch {
+    // best-effort only
+  }
+}
+const addPending = (slug: string, name: string) =>
+  writePending(slug, Array.from(new Set([...loadPending(slug), name])))
+const removePending = (slug: string, name: string) =>
+  writePending(slug, loadPending(slug).filter((n) => n !== name))
+
+// ==========================================================================
 
 export function GuestUploader({ slug, eventName }: { slug: string; eventName?: string }) {
   const [name, setName] = useState('')
   const [items, setItems] = useState<UploadItem[]>([])
-  const objectUrls = useRef<string[]>([])
+  const [objectUrls] = useState<string[]>(() => [])
+  const [dismissedReminder, setDismissedReminder] = useState(false)
 
-  // Release any image preview URLs when the page unmounts.
-  useEffect(() => () => objectUrls.current.forEach((u) => URL.revokeObjectURL(u)), [])
+  useEffect(() => () => objectUrls.forEach((u) => URL.revokeObjectURL(u)), [objectUrls])
+
+  // Read prior-session unfinished files once, after hydration (no SSR mismatch).
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
+  const priorPending = useMemo(() => (hydrated ? loadPending(slug) : []), [hydrated, slug])
+  const showReminder = hydrated && !dismissedReminder && priorPending.length > 0
 
   const patch = (id: string, next: Partial<UploadItem>) =>
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...next } : it)))
 
-  async function upload(item: UploadItem) {
-    const { id, file } = item
-    try {
-      patch(id, { status: 'uploading', progress: 0, error: undefined })
+  // --- API calls (slug + name captured) ---
+  async function initiate(file: File) {
+    const res = await fetch(`/api/e/${slug}/upload-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type,
+        fileSizeBytes: file.size,
+        uploaderName: name.trim() || undefined,
+      }),
+    })
+    if (!res.ok) throw new Error(await readErrorMessage(res, 'Could not start the upload.'))
+    return (await res.json()) as
+      | { mode: 'single'; uploadUrl: string; ticket: string }
+      | { mode: 'multipart'; partSize: number; ticket: string }
+  }
 
-      const sessionRes = await fetch(`/api/e/${slug}/upload-sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type,
-          fileSizeBytes: file.size,
-          uploaderName: name.trim() || undefined,
-        }),
-      })
-      if (!sessionRes.ok) {
-        throw new Error(await readErrorMessage(sessionRes, 'Could not start the upload.'))
-      }
-      const { uploadUrl, ticket } = (await sessionRes.json()) as {
-        uploadUrl: string
-        ticket: string
-      }
-
-      await putWithProgress(uploadUrl, file, (percent) => patch(id, { progress: percent }))
-
-      patch(id, { status: 'finalizing', progress: 100 })
-      const confirmRes = await fetch(`/api/e/${slug}/uploads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket }),
-      })
-      if (!confirmRes.ok) {
-        throw new Error(await readErrorMessage(confirmRes, 'Could not finalize the upload.'))
-      }
-
-      patch(id, { status: 'done' })
-    } catch (err) {
-      patch(id, { status: 'error', error: err instanceof Error ? err.message : 'Upload failed' })
+  async function presignParts(ticket: string, partNumbers: number[]) {
+    const res = await fetch(`/api/e/${slug}/upload-parts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket, partNumbers }),
+    })
+    if (!res.ok) {
+      if ((await readErrorCode(res)) === 'INVALID_TICKET') throw new TicketExpiredError()
+      throw new Error(await readErrorMessage(res, 'Upload preparation failed.'))
     }
+    return (await res.json()).urls as Record<number, string>
+  }
+
+  async function confirm(ticket: string, parts?: { partNumber: number; etag: string }[]) {
+    const res = await fetch(`/api/e/${slug}/uploads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(parts ? { ticket, parts } : { ticket }),
+    })
+    if (!res.ok) {
+      if ((await readErrorCode(res)) === 'INVALID_TICKET') throw new TicketExpiredError()
+      throw new Error(await readErrorMessage(res, 'Could not finalize the upload.'))
+    }
+  }
+
+  async function runUpload(item: UploadItem) {
+    const { id, file } = item
+    patch(id, { status: 'uploading', error: undefined })
+
+    let mp = item.mp
+    if (!mp) {
+      const res = await initiate(file)
+      if (res.mode === 'single') {
+        await putWithProgress(res.uploadUrl, file, (pct) => patch(id, { progress: pct }))
+        patch(id, { status: 'finalizing', progress: 100 })
+        await confirm(res.ticket)
+        finishDone(id, file.name)
+        return
+      }
+      mp = {
+        ticket: res.ticket,
+        partSize: res.partSize,
+        total: Math.max(1, Math.ceil(file.size / res.partSize)),
+        done: {},
+      }
+      patch(id, { mp })
+    }
+
+    // Upload only the parts we don't already have (this is the resume).
+    let uploadedBytes = 0
+    const missing: number[] = []
+    for (let n = 1; n <= mp.total; n++) {
+      if (mp.done[n]) uploadedBytes += partLen(file, mp.partSize, n)
+      else missing.push(n)
+    }
+
+    if (missing.length > 0) {
+      const urls = await presignParts(mp.ticket, missing)
+      for (const n of missing) {
+        const blob = file.slice((n - 1) * mp.partSize, Math.min(n * mp.partSize, file.size))
+        const onLoaded = (loaded: number) =>
+          patch(id, { progress: pctOf(uploadedBytes + loaded, file.size) })
+        let etag: string
+        try {
+          etag = await putPartWithProgress(urls[n], blob, onLoaded)
+        } catch {
+          // Re-presign just this part and retry once (covers a dropped chunk).
+          const fresh = await presignParts(mp.ticket, [n])
+          etag = await putPartWithProgress(fresh[n], blob, onLoaded)
+        }
+        uploadedBytes += blob.size
+        mp.done[n] = etag
+        patch(id, { mp: { ...mp }, progress: pctOf(uploadedBytes, file.size) })
+      }
+    }
+
+    patch(id, { status: 'finalizing', progress: 100 })
+    await confirm(
+      mp.ticket,
+      Object.entries(mp.done).map(([n, etag]) => ({ partNumber: Number(n), etag })),
+    )
+    finishDone(id, file.name)
+  }
+
+  async function upload(item: UploadItem) {
+    try {
+      await runUpload(item)
+    } catch (err) {
+      if (err instanceof TicketExpiredError) {
+        // Upload window lapsed (e.g. resumed much later): restart this file fresh.
+        patch(item.id, { mp: undefined, progress: 0 })
+        try {
+          await runUpload({ ...item, mp: undefined })
+          return
+        } catch (retryErr) {
+          fail(item.id, retryErr)
+          return
+        }
+      }
+      fail(item.id, err)
+    }
+  }
+
+  function finishDone(id: string, fileName: string) {
+    patch(id, { status: 'done' })
+    removePending(slug, fileName)
+  }
+  function fail(id: string, err: unknown) {
+    patch(id, { status: 'error', error: err instanceof Error ? err.message : 'Upload failed' })
   }
 
   function buildItem(file: File): UploadItem {
@@ -114,19 +280,22 @@ export function GuestUploader({ slug, eventName }: { slug: string; eventName?: s
     let thumbUrl: string | undefined
     if (file.type.startsWith('image/')) {
       thumbUrl = URL.createObjectURL(file)
-      objectUrls.current.push(thumbUrl)
+      objectUrls.push(thumbUrl)
     }
     return { id, file, status: 'queued', progress: 0, thumbUrl }
   }
 
   async function handleFiles(files: File[]) {
     if (files.length === 0) return
-    const accepted = files.map(buildItem)
-    setItems((prev) => [...prev, ...accepted])
-
     // Sequential keeps memory + bandwidth predictable on phones.
-    for (const item of accepted) {
-      if (item.status === 'queued') await upload(item)
+    for (const raw of files) {
+      const file = await compressImage(raw) // skips HEIC/video; cuts payload otherwise
+      const item = buildItem(file)
+      setItems((prev) => [...prev, item])
+      if (item.status === 'queued') {
+        addPending(slug, file.name)
+        await upload(item)
+      }
     }
   }
 
@@ -136,10 +305,12 @@ export function GuestUploader({ slug, eventName }: { slug: string; eventName?: s
   const active = items.some((i) => ['queued', 'uploading', 'finalizing'].includes(i.status))
   const allDone = total > 0 && done === total
 
-  // Landing — set an optional name, then add files.
   if (total === 0) {
     return (
       <div className="space-y-5">
+        {showReminder && (
+          <ReminderBanner names={priorPending} onDismiss={() => setDismissedReminder(true)} />
+        )}
         <Input
           id="uploaderName"
           label="Your name (optional)"
@@ -159,14 +330,13 @@ export function GuestUploader({ slug, eventName }: { slug: string; eventName?: s
         />
         <ul className="space-y-3">
           <Reassure>Pick as many as you like — they upload together.</Reassure>
-          <Reassure>On a weak signal it keeps trying. Nothing is lost.</Reassure>
-          <Reassure>Come back to this page anytime to add more.</Reassure>
+          <Reassure>Patchy signal? It keeps retrying and resumes where it left off.</Reassure>
+          <Reassure>Leave and finish from home anytime — your link stays active.</Reassure>
         </ul>
       </div>
     )
   }
 
-  // In-progress / success.
   return (
     <div className="space-y-5">
       {allDone ? (
@@ -175,11 +345,10 @@ export function GuestUploader({ slug, eventName }: { slug: string; eventName?: s
             <CheckIcon className="size-9" />
             <SparkleIcon className="absolute -top-1 -right-1 size-5 text-gold-500" />
           </div>
-          <h2 className="mt-4 font-display text-h1 text-foreground">
-            {done} uploaded
-          </h2>
+          <h2 className="mt-4 font-display text-h1 text-foreground">{done} uploaded</h2>
           <p className="mt-1 text-body-sm text-muted-foreground">
-            Thank you for sharing{eventName ? ` with ${eventName}` : ''} — it&apos;s safe to close this page.
+            Thank you for sharing{eventName ? ` with ${eventName}` : ''} — it&apos;s safe to close
+            this page.
           </p>
         </div>
       ) : (
@@ -217,7 +386,7 @@ export function GuestUploader({ slug, eventName }: { slug: string; eventName?: s
 
       {active && (
         <p className="rounded-xl bg-muted px-4 py-3 text-center text-caption text-muted-foreground">
-          Keep this page open. You can finish later — uploaded photos are safe.
+          Lost signal? It resumes automatically — and you can finish later from home.
         </p>
       )}
 
@@ -240,5 +409,24 @@ function Reassure({ children }: { children: React.ReactNode }) {
       </span>
       {children}
     </li>
+  )
+}
+
+function ReminderBanner({ names, onDismiss }: { names: string[]; onDismiss: () => void }) {
+  return (
+    <div className="rounded-xl border border-warning-border bg-warning-subtle px-4 py-3 text-warning-subtle-foreground">
+      <p className="text-body-sm font-medium">Welcome back — finish your upload</p>
+      <p className="mt-0.5 text-caption">
+        {names.length} {names.length === 1 ? 'photo' : 'photos'} didn’t finish last time. Add{' '}
+        {names.length === 1 ? 'it' : 'them'} again below to complete — anything already uploaded is
+        safe.
+      </p>
+      <button
+        onClick={onDismiss}
+        className="mt-2 text-caption font-medium underline underline-offset-4"
+      >
+        Dismiss
+      </button>
+    </div>
   )
 }
