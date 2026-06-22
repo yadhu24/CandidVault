@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/auth/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { PASSWORD_MIN, SignupSchema } from '@/lib/validation/auth'
 
 export function SignupForm() {
   const [email, setEmail] = useState('')
@@ -15,13 +16,20 @@ export function SignupForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setLoading(true)
 
+    const parsed = SignupSchema.safeParse({ email, password })
+    if (!parsed.success) {
+      setError(`Enter a valid email and a password of at least ${PASSWORD_MIN} characters.`)
+      return
+    }
+
+    setLoading(true)
     const supabase = createSupabaseBrowserClient()
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${location.origin}/dashboard` },
+      // Email confirmation returns here to exchange the code for a session.
+      options: { emailRedirectTo: `${location.origin}/auth/callback?next=/dashboard` },
     })
 
     if (error) {
@@ -60,7 +68,7 @@ export function SignupForm() {
         onChange={(e) => setPassword(e.target.value)}
         required
         autoComplete="new-password"
-        minLength={8}
+        minLength={PASSWORD_MIN}
       />
       {error && <p className="text-sm text-red-500">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>

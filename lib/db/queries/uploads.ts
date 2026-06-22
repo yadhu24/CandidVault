@@ -42,6 +42,43 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
   return row as Upload
 }
 
+export interface RegisterUploadInput {
+  eventId: string
+  storageKey: string
+  mediaType: MediaType
+  mimeType: string
+  fileSizeBytes: number
+  guestSessionId: string | null
+  uploaderName: string | null
+  originalFilename: string | null
+}
+
+// Records a completed upload. status + moderation_status fall to their schema
+// defaults ('pending') — uploads always start awaiting processing + moderation
+// (requirement 6). Idempotent on storage_key so a retried confirmation returns
+// the same row instead of failing.
+export async function registerUpload(input: RegisterUploadInput): Promise<Upload> {
+  const row = await queryOne<Upload>(
+    `INSERT INTO uploads
+       (event_id, guest_session_id, uploader_name, media_type, mime_type,
+        file_size_bytes, storage_key, original_filename)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (storage_key) DO UPDATE SET storage_key = uploads.storage_key
+     RETURNING *`,
+    [
+      input.eventId,
+      input.guestSessionId,
+      input.uploaderName,
+      input.mediaType,
+      input.mimeType,
+      input.fileSizeBytes,
+      input.storageKey,
+      input.originalFilename,
+    ],
+  )
+  return row as Upload
+}
+
 export function getUploadById(id: string): Promise<Upload | null> {
   return queryOne<Upload>(`SELECT * FROM uploads WHERE id = $1`, [id])
 }

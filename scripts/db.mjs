@@ -41,6 +41,21 @@ export function getConnectionString() {
   return url
 }
 
+// Managed Postgres (Supabase, etc.) requires TLS; local dev does not.
+function requiresSsl(connectionString) {
+  if (process.env.DATABASE_SSL === 'disable') return false
+  try {
+    const host = new URL(connectionString).hostname
+    return host !== 'localhost' && host !== '127.0.0.1' && host !== '::1'
+  } catch {
+    return false
+  }
+}
+
 export function createClient() {
-  return new pg.Client({ connectionString: getConnectionString() })
+  const connectionString = getConnectionString()
+  return new pg.Client({
+    connectionString,
+    ssl: requiresSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+  })
 }
