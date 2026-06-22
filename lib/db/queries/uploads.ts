@@ -110,6 +110,40 @@ export function listUploadsByEvent(
   )
 }
 
+export interface ModerationUpload extends Upload {
+  thumbnailKey: string | null
+}
+
+export interface ListModerationOptions extends PageOptions {
+  moderationStatus: ModerationStatus
+  mediaType?: MediaType
+}
+
+// Moderation queue feed: an event's uploads in one status, optionally one media
+// type, each joined to its thumbnail variant key (null until the worker has made
+// one). Storage keys stay server-side — the page presigns the thumbnail.
+export function listUploadsForModeration(
+  eventId: string,
+  opts: ListModerationOptions,
+): Promise<ModerationUpload[]> {
+  const { limit, offset } = resolvePage(opts)
+  const params: unknown[] = [eventId, opts.moderationStatus, limit, offset]
+  let typeClause = ''
+  if (opts.mediaType) {
+    params.push(opts.mediaType)
+    typeClause = ` AND u.media_type = $5`
+  }
+  return query<ModerationUpload>(
+    `SELECT u.*, v.storage_key AS thumbnail_key
+     FROM uploads u
+     LEFT JOIN upload_variants v ON v.upload_id = u.id AND v.variant = 'thumbnail'
+     WHERE u.event_id = $1 AND u.moderation_status = $2${typeClause}
+     ORDER BY u.created_at DESC
+     LIMIT $3 OFFSET $4`,
+    params,
+  )
+}
+
 // Worker: claim unfinished media. Backed by the partial index
 // idx_uploads_pending_processing so it stays cheap as the table grows.
 export function listPendingProcessing(limit = 20): Promise<Upload[]> {
