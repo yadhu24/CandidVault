@@ -89,6 +89,7 @@ export interface Upload {
   processingAttempts: number
   processingError: string | null
   processedAt: string | null
+  isFavorite: boolean
   createdAt: string
   updatedAt: string
 }

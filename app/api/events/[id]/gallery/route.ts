@@ -25,7 +25,8 @@ export async function GET(request: Request, { params }: Params) {
   const mediaType: MediaType | undefined =
     typeParam === 'photo' || typeParam === 'video' ? typeParam : undefined
   const offset = Math.max(0, Number(sp.get('offset') ?? 0) | 0)
+  const favoritesOnly = sp.get('fav') === '1'
 
-  const page = await loadGalleryPage(event.id, { mediaType, sort, offset })
+  const page = await loadGalleryPage(event.id, { mediaType, sort, offset, favoritesOnly })
   return apiJson(page, 200)
 }

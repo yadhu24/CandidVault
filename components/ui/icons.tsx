@@ -139,6 +139,18 @@ export const SparkleIcon = (p: IconProps) => (
   </Icon>
 )
 
+export const StarIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.77l-5.2 2.74.99-5.79-4.21-4.1 5.82-.85z" />
+  </Icon>
+)
+
+export const FolderIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.2h7A1.5 1.5 0 0 1 19 9.7V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  </Icon>
+)
+
 export const CalendarIcon = (p: IconProps) => (
   <Icon {...p}>
     <rect x="3.5" y="5" width="17" height="16" rx="2.5" />

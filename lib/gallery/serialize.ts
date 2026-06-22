@@ -11,7 +11,8 @@ const presignOrNull = (key: string | null | undefined): Promise<string | null> =
 
 // Grid uses the thumbnail; modal uses the preview (poster for video). Both fall
 // back through available variants so an item still renders if one is missing.
-async function toGalleryItem(u: GalleryUpload): Promise<GalleryItem> {
+// Shared by the gallery feed and album views.
+export async function toGalleryItem(u: GalleryUpload): Promise<GalleryItem> {
   const [thumbUrl, previewUrl] = await Promise.all([
     presignOrNull(u.thumbnailKey ?? u.previewKey),
     presignOrNull(u.previewKey ?? u.webKey ?? u.thumbnailKey),
@@ -25,6 +26,7 @@ async function toGalleryItem(u: GalleryUpload): Promise<GalleryItem> {
     sizeLabel: formatBytes(u.fileSizeBytes),
     uploaderName: u.uploaderName,
     timeLabel: formatRelativeTime(u.createdAt),
+    isFavorite: u.isFavorite,
     thumbUrl,
     previewUrl,
   }
@@ -35,11 +37,12 @@ async function toGalleryItem(u: GalleryUpload): Promise<GalleryItem> {
 // load-more API.
 export async function loadGalleryPage(
   eventId: string,
-  opts: { mediaType?: MediaType; sort: GallerySort; offset: number },
+  opts: { mediaType?: MediaType; sort: GallerySort; offset: number; favoritesOnly?: boolean },
 ): Promise<GalleryPage> {
   const rows = await listApprovedUploads(eventId, {
     mediaType: opts.mediaType,
     sort: opts.sort,
+    favoritesOnly: opts.favoritesOnly,
     limit: GALLERY_PAGE_SIZE + 1,
     offset: opts.offset,
   })

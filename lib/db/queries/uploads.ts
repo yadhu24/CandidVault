@@ -153,6 +153,7 @@ export interface GalleryUpload extends Upload {
 export interface ListApprovedOptions extends PageOptions {
   mediaType?: MediaType
   sort?: 'newest' | 'oldest'
+  favoritesOnly?: boolean
 }
 
 // Approved gallery feed: one row per approved upload with its thumbnail/preview/
@@ -171,6 +172,7 @@ export function listApprovedUploads(
     params.push(opts.mediaType)
     typeClause = ` AND u.media_type = $4`
   }
+  const favClause = opts.favoritesOnly ? ' AND u.is_favorite' : ''
   return query<GalleryUpload>(
     `SELECT u.*,
        MAX(CASE WHEN v.variant = 'thumbnail' THEN v.storage_key END) AS thumbnail_key,
@@ -178,11 +180,24 @@ export function listApprovedUploads(
        MAX(CASE WHEN v.variant = 'web'       THEN v.storage_key END) AS web_key
      FROM uploads u
      LEFT JOIN upload_variants v ON v.upload_id = u.id
-     WHERE u.event_id = $1 AND u.moderation_status = 'approved'${typeClause}
+     WHERE u.event_id = $1 AND u.moderation_status = 'approved'${typeClause}${favClause}
      GROUP BY u.id
      ORDER BY u.created_at ${order}
      LIMIT $2 OFFSET $3`,
     params,
+  )
+}
+
+// Event-scoped favorite toggle. event_id in the predicate prevents touching an
+// upload from another event even with a crafted id. Returns null if not found.
+export function setUploadFavorite(
+  uploadId: string,
+  eventId: string,
+  favorite: boolean,
+): Promise<Upload | null> {
+  return queryOne<Upload>(
+    `UPDATE uploads SET is_favorite = $3 WHERE id = $1 AND event_id = $2 RETURNING *`,
+    [uploadId, eventId, favorite],
   )
 }
 

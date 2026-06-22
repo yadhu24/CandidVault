@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { StatusPill, type Status } from './StatusPill'
-import { CheckIcon, ImageIcon, PlayIcon } from './icons'
+import { CheckIcon, ImageIcon, PlayIcon, StarIcon } from './icons'
 
 interface MediaTileProps {
   /** Thumbnail URL. When omitted, a typed placeholder is shown (e.g. a video
@@ -16,6 +16,8 @@ interface MediaTileProps {
   onClick?: () => void
   selected?: boolean
   onToggleSelect?: () => void
+  favorite?: boolean
+  onToggleFavorite?: () => void
   className?: string
 }
 
@@ -32,6 +34,8 @@ export function MediaTile({
   onClick,
   selected = false,
   onToggleSelect,
+  favorite = false,
+  onToggleFavorite,
   className,
 }: MediaTileProps) {
   const interactive = Boolean(href || onClick)
@@ -95,6 +99,18 @@ export function MediaTile({
         <div className="pointer-events-none absolute top-1.5 right-1.5 z-[5]">
           <StatusPill status={status} />
         </div>
+      )}
+
+      {onToggleFavorite && (
+        <button
+          type="button"
+          aria-pressed={favorite}
+          aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}
+          onClick={onToggleFavorite}
+          className="absolute top-1.5 right-1.5 z-20 inline-flex size-7 items-center justify-center rounded-md bg-black/30 text-white outline-none backdrop-blur-sm transition-colors hover:bg-black/45 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <StarIcon className={cn('size-4', favorite && 'fill-current text-gold-300')} />
+        </button>
       )}
 
       {onToggleSelect && (

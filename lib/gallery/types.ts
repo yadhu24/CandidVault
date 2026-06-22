@@ -12,6 +12,7 @@ export interface GalleryItem {
   sizeLabel: string
   uploaderName: string | null
   timeLabel: string
+  isFavorite: boolean
   thumbUrl: string | null
   previewUrl: string | null
 }
