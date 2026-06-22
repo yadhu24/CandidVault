@@ -26,11 +26,14 @@ confirm  ───────────────────▶  HEAD obje
                                                               │   GetObject(original) ◀──── R2            │
                                                               │   sha256 → checksum                       │
                                                               │   sharp.metadata() → width/height         │
-                                                              │   render thumbnail(480) + preview(1280)   │
+                                                              │   render thumbnail(480) + preview(1280) webp│
+                                                              │   HEIC → + full-size JPEG ('web')         │
                                                               │   PutObject(variant) ─────▶ R2            │
                                                               │   upsertUploadVariant(…)  (idempotent)    │
-                                                              │ video:                                    │
-                                                              │   placeholder — no decode, no thumbnail   │
+                                                              │ video (ffmpeg present):                   │
+                                                              │   ffprobe duration/dims + poster frame    │
+                                                              │   → webp thumbnail/preview                │
+                                                              │ video (no ffmpeg): queued fallback        │
                                                               └───────────────────────────────────────────┘
                                                               success ▶ markUploadReady(metadata)  status='ready'
                                                               throw   ▶ markUploadFailed(error)    status='failed'
@@ -74,13 +77,18 @@ function. Multiple instances are safe (SKIP LOCKED).
 
 ## Gaps / manual infra
 
-- **Video thumbnails + duration require `ffmpeg`** (not bundled). Today videos
-  get a placeholder (no thumbnail, null duration); the gallery shows a generic
-  video tile. Add an ffmpeg/ffprobe step in `processVideo` to extract a poster
-  frame + duration.
+- **HEIC → JPEG is handled in-worker** via sharp (libvips/libheif): every HEIC
+  upload gets webp thumbnail/preview plus a full-size JPEG (`web`) variant, so
+  iPhone photos render in any browser and export as JPEG. No extra infra.
+- **Video posters/duration use `ffmpeg`/`ffprobe` when present** (not bundled).
+  Install them on the worker host for poster frames + duration; without them the
+  worker uses the explicit queued fallback (original kept, `transcode:'pending'`,
+  generic video tile) and a later run can reprocess via `processUploadById`. ffmpeg
+  range-seeks a presigned GET URL, so the whole file is never downloaded. Full
+  re-encode/normalize to a standard MP4 is the documented next step.
 - **`sharp` is a native module.** Installed as a dependency; if a host lacks the
   binary the worker degrades to "metadata only" (no thumbnails) rather than
-  crashing. HEIC support depends on the platform's libvips build.
+  crashing.
 - **Variant downloads** for the gallery use presigned GET (`createDownloadPresignedUrl`)
   against the private bucket — wiring those into the gallery UI is separate work.
 - **Zip export** worker (`exports` table) is a future, separate job kind.
