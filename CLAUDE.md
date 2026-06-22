@@ -319,12 +319,41 @@ Simplicity is the default; complexity must be justified and requested.
 
 ---
 
+## 15. Design system (UI)
+
+There is a single design system; build every screen from it so the product stays
+consistent and re-themes from one place. Full reference:
+[`docs/design-system.md`](./docs/design-system.md). Living showcase route:
+`/design-system` ([`app/design-system/page.tsx`](./app/design-system/page.tsx)).
+
+- **Tokens** live in [`app/globals.css`](./app/globals.css) (Tailwind v4
+  `@theme` + semantic CSS vars for light/dark). **Components** live in
+  `components/ui/` — import from `@/components/ui`.
+- **Use semantic tokens, never raw hex or `zinc-*`**: `bg-background`,
+  `text-foreground`, `bg-card`, `bg-primary`, `border-border`,
+  `text-muted-foreground`, and the status families
+  (`bg-success-subtle text-success-subtle-foreground border-success-border`, …).
+  They flip automatically in dark mode.
+- **Reuse the primitives** (`Button`, `Input`, `Card`, `Badge`, `StatusPill`,
+  `Modal`, `Drawer`, `Dropzone`, `UploadProgressItem`, `MediaTile`, `MediaGrid`,
+  `EmptyState`, `Spinner`, `Skeleton`) before writing bespoke markup. Add new
+  primitives to `components/ui/` and export them from its `index.ts`.
+- **Typography**: Geist for UI; pair `font-display` (Fraunces serif) with the
+  `text-display`/`text-title`/`text-h*` scale for headings.
+- **Accessibility is non-negotiable**: AA contrast, ≥44px touch targets (Button
+  `md`/`lg`/`icon`, `Input`), visible `focus-visible` rings, `aria-label` on
+  icon-only controls, and never color as the only signal.
+
+---
+
 ## Quick reference for common tasks
 
 - **Adding an endpoint**: validate input → check session/ownership → call a
   `lib/` service → return the standard shape. Add tests.
 - **Adding a media feature**: presign in `lib/storage`, record in `lib/db`,
   enqueue worker job, handle idempotently in `worker/`.
+- **Building a screen/UI**: compose `@/components/ui` primitives with semantic
+  tokens; follow rule 15 and `docs/design-system.md`. Don't hardcode colors.
 - **Changing schema**: new file in `migrations/`, expand/contract, explain
   risk, get sign-off if destructive.
 - **Touching auth/storage/security**: apply rule 12.
