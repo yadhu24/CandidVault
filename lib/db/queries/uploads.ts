@@ -144,6 +144,48 @@ export function listUploadsForModeration(
   )
 }
 
+export interface GalleryUpload extends Upload {
+  thumbnailKey: string | null
+  previewKey: string | null
+  webKey: string | null
+}
+
+export interface ListApprovedOptions extends PageOptions {
+  mediaType?: MediaType
+  sort?: 'newest' | 'oldest'
+}
+
+// Approved gallery feed: one row per approved upload with its thumbnail/preview/
+// web variant keys folded in via a single aggregating join (GROUP BY the PK).
+// Storage keys stay server-side; the caller presigns. Ordered by capture/upload
+// time; paginated via limit/offset.
+export function listApprovedUploads(
+  eventId: string,
+  opts: ListApprovedOptions = {},
+): Promise<GalleryUpload[]> {
+  const { limit, offset } = resolvePage(opts)
+  const order = opts.sort === 'oldest' ? 'ASC' : 'DESC' // fixed literals, never user input
+  const params: unknown[] = [eventId, limit, offset]
+  let typeClause = ''
+  if (opts.mediaType) {
+    params.push(opts.mediaType)
+    typeClause = ` AND u.media_type = $4`
+  }
+  return query<GalleryUpload>(
+    `SELECT u.*,
+       MAX(CASE WHEN v.variant = 'thumbnail' THEN v.storage_key END) AS thumbnail_key,
+       MAX(CASE WHEN v.variant = 'preview'   THEN v.storage_key END) AS preview_key,
+       MAX(CASE WHEN v.variant = 'web'       THEN v.storage_key END) AS web_key
+     FROM uploads u
+     LEFT JOIN upload_variants v ON v.upload_id = u.id
+     WHERE u.event_id = $1 AND u.moderation_status = 'approved'${typeClause}
+     GROUP BY u.id
+     ORDER BY u.created_at ${order}
+     LIMIT $2 OFFSET $3`,
+    params,
+  )
+}
+
 // Worker: claim unfinished media. Backed by the partial index
 // idx_uploads_pending_processing so it stays cheap as the table grows.
 export function listPendingProcessing(limit = 20): Promise<Upload[]> {

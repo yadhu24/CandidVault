@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { StatusPill, type Status } from './StatusPill'
-import { CheckIcon, PlayIcon } from './icons'
+import { CheckIcon, ImageIcon, PlayIcon } from './icons'
 
 interface MediaTileProps {
-  src: string
+  /** Thumbnail URL. When omitted, a typed placeholder is shown (e.g. a video
+   * whose poster hasn't been generated yet). */
+  src?: string
   alt: string
   type?: 'photo' | 'video'
   /** e.g. "0:42" */
@@ -42,13 +44,19 @@ export function MediaTile({
         className,
       )}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={interactive ? '' : alt}
-        loading="lazy"
-        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-      />
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={interactive ? '' : alt}
+          loading="lazy"
+          className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center text-muted-foreground">
+          {type === 'video' ? <PlayIcon className="size-8" /> : <ImageIcon className="size-8" />}
+        </div>
+      )}
 
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
 
@@ -69,7 +77,7 @@ export function MediaTile({
         </button>
       ) : null}
 
-      {type === 'video' && (
+      {type === 'video' && src && (
         <span className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
           <span className="flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
             <PlayIcon className="size-5" />
