@@ -18,7 +18,7 @@ export function EventTabs({ eventId }: { eventId: string }) {
   const active = useSelectedLayoutSegment()
 
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b border-zinc-200">
+    <nav className="-mb-px flex gap-1 overflow-x-auto border-b border-border">
       {TABS.map((tab) => {
         const isActive = active === tab.segment
         return (
@@ -26,10 +26,10 @@ export function EventTabs({ eventId }: { eventId: string }) {
             key={tab.label}
             href={`/events/${eventId}${tab.path}`}
             className={cn(
-              'border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors',
+              'shrink-0 border-b-2 px-3 py-2.5 text-body-sm font-medium whitespace-nowrap transition-colors',
               isActive
-                ? 'border-zinc-900 text-zinc-900'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900',
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {tab.label}

@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react'
 import { formatEventDate } from '@/lib/events/format'
 import { resolvePublicEvent } from '@/lib/events/service'
+import { AlertIcon, CalendarIcon, MapPinIcon } from '@/components/ui/icons'
 import { GuestUploader } from './GuestUploader'
 
 interface Props {
@@ -20,8 +22,10 @@ export default async function GuestUploadPage({ params }: Props) {
     return (
       <PublicShell>
         <StateCard
-          title="Link not found"
-          message="This upload link is invalid or has been removed."
+          tone="destructive"
+          icon={<AlertIcon className="size-8" />}
+          title="This link doesn’t look right"
+          message="Double-check the QR code, or ask the host for a fresh link to share your photos."
         />
       </PublicShell>
     )
@@ -30,7 +34,12 @@ export default async function GuestUploadPage({ params }: Props) {
   if (result.state === 'inactive') {
     return (
       <PublicShell>
-        <StateCard title={result.event.name} message={INACTIVE_MESSAGE[result.reason]} />
+        <StateCard
+          tone="muted"
+          icon={<CalendarIcon className="size-8" />}
+          title={result.event.name}
+          message={INACTIVE_MESSAGE[result.reason]}
+        />
       </PublicShell>
     )
   }
@@ -38,33 +47,60 @@ export default async function GuestUploadPage({ params }: Props) {
   const { event } = result
   return (
     <PublicShell>
-      <div className="space-y-1 text-center">
-        <h1 className="text-2xl font-bold text-zinc-900">{event.name}</h1>
-        <p className="text-sm text-zinc-500">
-          {formatEventDate(event.eventDate)}
-          {event.venue ? ` · ${event.venue}` : ''}
-        </p>
-      </div>
-      <GuestUploader slug={event.slug} />
+      <header className="text-center">
+        <p className="text-overline uppercase text-primary">You’re invited to share</p>
+        <h1 className="mt-1 font-display text-title text-foreground">{event.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <CalendarIcon className="size-3.5" /> {formatEventDate(event.eventDate)}
+          </span>
+          {event.venue && (
+            <span className="inline-flex items-center gap-1">
+              <MapPinIcon className="size-3.5" /> {event.venue}
+            </span>
+          )}
+        </div>
+      </header>
+      <GuestUploader slug={event.slug} eventName={event.name} />
     </PublicShell>
   )
 }
 
-function PublicShell({ children }: { children: React.ReactNode }) {
+function PublicShell({ children }: { children: ReactNode }) {
   return (
-    <main className="flex min-h-screen flex-col items-center bg-zinc-50 px-4 py-10">
-      <div className="mb-8 text-sm font-semibold text-zinc-900">CandidVault</div>
-      <div className="w-full max-w-md space-y-6">{children}</div>
-      <p className="mt-10 text-xs text-zinc-400">Powered by CandidVault</p>
+    <main className="flex min-h-screen flex-col items-center bg-background px-5 py-8">
+      <div className="mb-8 font-display text-h3 text-foreground">CandidVault</div>
+      <div className="w-full max-w-md space-y-8">{children}</div>
+      <p className="mt-12 text-caption text-muted-foreground">Powered by CandidVault</p>
     </main>
   )
 }
 
-function StateCard({ title, message }: { title: string; message: string }) {
+function StateCard({
+  tone,
+  icon,
+  title,
+  message,
+}: {
+  tone: 'muted' | 'destructive'
+  icon: ReactNode
+  title: string
+  message: string
+}) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center">
-      <h1 className="font-semibold text-zinc-900">{title}</h1>
-      <p className="mt-2 text-sm text-zinc-500">{message}</p>
+    <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-xs">
+      <div
+        className={
+          'mx-auto flex size-16 items-center justify-center rounded-full ' +
+          (tone === 'destructive'
+            ? 'bg-destructive-subtle text-destructive-subtle-foreground'
+            : 'bg-muted text-muted-foreground')
+        }
+      >
+        {icon}
+      </div>
+      <h1 className="mt-5 font-display text-h2 text-foreground">{title}</h1>
+      <p className="mt-2 text-body-sm text-muted-foreground">{message}</p>
     </div>
   )
 }

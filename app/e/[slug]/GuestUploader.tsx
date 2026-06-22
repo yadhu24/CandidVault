@@ -1,9 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import { useEffect, useRef, useState } from 'react'
+import { Dropzone, Input, UploadProgressItem } from '@/components/ui'
+import { CameraIcon, CheckIcon, SparkleIcon } from '@/components/ui/icons'
 import { isAllowedMimeType, maxBytesForMime } from '@/lib/validation/media'
+
+// Same set the server validates against; also drives the native picker filter.
+const ACCEPT = 'image/jpeg,image/png,image/heic,image/webp,video/mp4,video/quicktime'
 
 type ItemStatus = 'queued' | 'uploading' | 'finalizing' | 'done' | 'error'
 
@@ -13,6 +16,7 @@ interface UploadItem {
   status: ItemStatus
   progress: number
   error?: string
+  thumbUrl?: string
 }
 
 // fetch() can't report upload progress, so the direct-to-R2 PUT uses XHR.
@@ -47,10 +51,13 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
   }
 }
 
-export function GuestUploader({ slug }: { slug: string }) {
+export function GuestUploader({ slug, eventName }: { slug: string; eventName?: string }) {
   const [name, setName] = useState('')
   const [items, setItems] = useState<UploadItem[]>([])
-  const inputRef = useRef<HTMLInputElement>(null)
+  const objectUrls = useRef<string[]>([])
+
+  // Release any image preview URLs when the page unmounts.
+  useEffect(() => () => objectUrls.current.forEach((u) => URL.revokeObjectURL(u)), [])
 
   const patch = (id: string, next: Partial<UploadItem>) =>
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...next } : it)))
@@ -96,22 +103,26 @@ export function GuestUploader({ slug }: { slug: string }) {
     }
   }
 
-  async function onFilesSelected(files: FileList | null) {
-    if (!files || files.length === 0) return
-
-    const accepted: UploadItem[] = []
-    for (const file of Array.from(files)) {
-      const id = crypto.randomUUID()
-      if (!isAllowedMimeType(file.type)) {
-        accepted.push({ id, file, status: 'error', progress: 0, error: 'Unsupported file type' })
-      } else if (file.size > maxBytesForMime(file.type)) {
-        accepted.push({ id, file, status: 'error', progress: 0, error: 'File is too large' })
-      } else {
-        accepted.push({ id, file, status: 'queued', progress: 0 })
-      }
+  function buildItem(file: File): UploadItem {
+    const id = crypto.randomUUID()
+    if (!isAllowedMimeType(file.type)) {
+      return { id, file, status: 'error', progress: 0, error: 'Unsupported file type' }
     }
+    if (file.size > maxBytesForMime(file.type)) {
+      return { id, file, status: 'error', progress: 0, error: 'File is too large' }
+    }
+    let thumbUrl: string | undefined
+    if (file.type.startsWith('image/')) {
+      thumbUrl = URL.createObjectURL(file)
+      objectUrls.current.push(thumbUrl)
+    }
+    return { id, file, status: 'queued', progress: 0, thumbUrl }
+  }
+
+  async function handleFiles(files: File[]) {
+    if (files.length === 0) return
+    const accepted = files.map(buildItem)
     setItems((prev) => [...prev, ...accepted])
-    if (inputRef.current) inputRef.current.value = ''
 
     // Sequential keeps memory + bandwidth predictable on phones.
     for (const item of accepted) {
@@ -119,73 +130,115 @@ export function GuestUploader({ slug }: { slug: string }) {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <Input
-        id="uploaderName"
-        label="Your name (optional)"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        maxLength={100}
-        autoComplete="name"
-        placeholder="So the photographer knows who shared"
-      />
+  const total = items.length
+  const done = items.filter((i) => i.status === 'done').length
+  const errored = items.filter((i) => i.status === 'error').length
+  const active = items.some((i) => ['queued', 'uploading', 'finalizing'].includes(i.status))
+  const allDone = total > 0 && done === total
 
-      <label className="block cursor-pointer rounded-lg border-2 border-dashed border-zinc-300 bg-white p-8 text-center hover:border-zinc-400">
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/heic,image/webp,video/mp4,video/quicktime"
-          multiple
-          className="sr-only"
-          onChange={(e) => onFilesSelected(e.target.files)}
+  // Landing — set an optional name, then add files.
+  if (total === 0) {
+    return (
+      <div className="space-y-5">
+        <Input
+          id="uploaderName"
+          label="Your name (optional)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={100}
+          autoComplete="name"
+          placeholder="So the couple knows who shared"
         />
-        <span className="block font-semibold text-zinc-900">Tap to add photos &amp; videos</span>
-        <span className="mt-1 block text-sm text-zinc-500">JPEG, PNG, HEIC, WebP, MP4, or MOV</span>
-      </label>
-
-      {items.length > 0 && (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={item.id} className="rounded-md border border-zinc-200 bg-white p-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="truncate text-zinc-700">{item.file.name}</span>
-                <StatusLabel item={item} onRetry={() => upload(item)} />
-              </div>
-              {(item.status === 'uploading' || item.status === 'finalizing') && (
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100">
-                  <div
-                    className="h-full bg-zinc-900 transition-all"
-                    style={{ width: `${item.progress}%` }}
-                  />
-                </div>
-              )}
-              {item.status === 'error' && item.error && (
-                <p className="mt-1 text-xs text-red-500">{item.error}</p>
-              )}
-            </li>
-          ))}
+        <Dropzone
+          onFiles={handleFiles}
+          accept={ACCEPT}
+          icon={<CameraIcon className="size-7" />}
+          title="Add your photos & videos"
+          hint="JPEG, PNG, HEIC, WebP, MP4 or MOV"
+          className="min-h-56"
+        />
+        <ul className="space-y-3">
+          <Reassure>Pick as many as you like — they upload together.</Reassure>
+          <Reassure>On a weak signal it keeps trying. Nothing is lost.</Reassure>
+          <Reassure>Come back to this page anytime to add more.</Reassure>
         </ul>
+      </div>
+    )
+  }
+
+  // In-progress / success.
+  return (
+    <div className="space-y-5">
+      {allDone ? (
+        <div className="text-center">
+          <div className="relative mx-auto flex size-16 items-center justify-center rounded-full bg-success-subtle text-success">
+            <CheckIcon className="size-9" />
+            <SparkleIcon className="absolute -top-1 -right-1 size-5 text-gold-500" />
+          </div>
+          <h2 className="mt-4 font-display text-h1 text-foreground">
+            {done} uploaded
+          </h2>
+          <p className="mt-1 text-body-sm text-muted-foreground">
+            Thank you for sharing{eventName ? ` with ${eventName}` : ''} — it&apos;s safe to close this page.
+          </p>
+        </div>
+      ) : (
+        <div>
+          <h2 className="font-display text-h2 text-foreground">
+            {!active && errored > 0 ? 'Almost there' : 'Uploading your memories'}
+          </h2>
+          <p className="mt-1 text-body-sm text-muted-foreground">
+            {!active && errored > 0
+              ? `${errored} didn’t upload — tap retry. Everything else is in.`
+              : `${done} of ${total} uploaded`}
+          </p>
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-300"
+              style={{ width: `${Math.round((done / total) * 100)}%` }}
+            />
+          </div>
+        </div>
       )}
+
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <UploadProgressItem
+            key={item.id}
+            name={item.file.name}
+            status={item.status}
+            progress={item.progress}
+            error={item.error}
+            thumbnailUrl={item.thumbUrl}
+            onRetry={item.status === 'error' ? () => upload(item) : undefined}
+          />
+        ))}
+      </ul>
+
+      {active && (
+        <p className="rounded-xl bg-muted px-4 py-3 text-center text-caption text-muted-foreground">
+          Keep this page open. You can finish later — uploaded photos are safe.
+        </p>
+      )}
+
+      <Dropzone
+        onFiles={handleFiles}
+        accept={ACCEPT}
+        icon={<CameraIcon className="size-5" />}
+        title={allDone ? 'Add more photos & videos' : 'Add more'}
+        className="min-h-0 py-6"
+      />
     </div>
   )
 }
 
-function StatusLabel({ item, onRetry }: { item: UploadItem; onRetry: () => void }) {
-  switch (item.status) {
-    case 'uploading':
-      return <span className="shrink-0 text-zinc-500">{item.progress}%</span>
-    case 'finalizing':
-      return <span className="shrink-0 text-zinc-500">Finishing…</span>
-    case 'done':
-      return <span className="shrink-0 font-medium text-green-600">Uploaded</span>
-    case 'error':
-      return (
-        <Button type="button" variant="ghost" size="sm" onClick={onRetry} className="shrink-0">
-          Retry
-        </Button>
-      )
-    default:
-      return <span className="shrink-0 text-zinc-400">Queued</span>
-  }
+function Reassure({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-3 text-body-sm text-foreground">
+      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success-subtle text-success-subtle-foreground">
+        <CheckIcon className="size-3.5" />
+      </span>
+      {children}
+    </li>
+  )
 }

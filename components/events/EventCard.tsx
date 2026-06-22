@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/Card'
+import { CalendarIcon, MapPinIcon } from '@/components/ui/icons'
 import { formatEventDate } from '@/lib/events/format'
 import { EVENT_TYPE_LABELS } from '@/lib/validation/events'
 import type { Event } from '@/types'
@@ -9,18 +10,25 @@ export function EventCard({ event }: { event: Event }) {
   return (
     <Link
       href={`/events/${event.id}`}
-      className="block rounded-lg transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:outline-none"
+      className="group block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
-      <Card className="h-full">
-        <CardContent className="space-y-3">
+      <Card className="h-full transition-shadow group-hover:shadow-md">
+        <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="line-clamp-2 font-semibold text-zinc-900">{event.name}</h3>
+            <h2 className="line-clamp-2 font-display text-h3 text-foreground">{event.name}</h2>
             <EventStatusBadge status={event.status} />
           </div>
-          <dl className="space-y-1 text-sm text-zinc-500">
-            <dd>{EVENT_TYPE_LABELS[event.eventType]}</dd>
-            <dd>{formatEventDate(event.eventDate)}</dd>
-            {event.venue && <dd className="truncate">{event.venue}</dd>}
+          <dl className="space-y-1.5 text-caption text-muted-foreground">
+            <dd className="text-overline uppercase">{EVENT_TYPE_LABELS[event.eventType]}</dd>
+            <dd className="flex items-center gap-1.5">
+              <CalendarIcon className="size-3.5" /> {formatEventDate(event.eventDate)}
+            </dd>
+            {event.venue && (
+              <dd className="flex items-center gap-1.5">
+                <MapPinIcon className="size-3.5 shrink-0" />
+                <span className="truncate">{event.venue}</span>
+              </dd>
+            )}
           </dl>
         </CardContent>
       </Card>
