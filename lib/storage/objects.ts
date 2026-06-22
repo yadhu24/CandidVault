@@ -1,4 +1,9 @@
-import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3'
 import { getR2Client } from './r2'
 
 const BUCKET = process.env.R2_BUCKET_NAME!
@@ -24,6 +29,24 @@ export async function headObject(key: string): Promise<ObjectHead | null> {
 // never keep raw bytes we won't register.
 export async function deleteObject(key: string): Promise<void> {
   await getR2Client().send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
+}
+
+// Worker-only: downloads an original into memory for processing (hashing,
+// dimensions, thumbnails). The app server never does this — only the background
+// worker, which legitimately handles media (CLAUDE.md §2).
+export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const res = await getR2Client().send(new GetObjectCommand({ Bucket: BUCKET, Key: key }))
+  if (!res.Body) throw new Error(`Object has no body: ${key}`)
+  const bytes = await res.Body.transformToByteArray()
+  return Buffer.from(bytes)
+}
+
+// Worker-only: writes a derived variant (thumbnail/preview) back to the private
+// bucket. Server-side credentials only; variants are read later via presigned GET.
+export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  await getR2Client().send(
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: contentType }),
+  )
 }
 
 function isNotFound(err: unknown): boolean {

@@ -157,6 +157,98 @@ export function updateUploadProcessing(
   )
 }
 
+// --- Worker job lifecycle -------------------------------------------------
+
+// Atomically claims the oldest pending upload for processing. FOR UPDATE SKIP
+// LOCKED lets multiple workers run concurrently without ever grabbing the same
+// row, and the attempt counter caps retries / supports stale-job recovery.
+// Returns null when the queue is empty.
+export function claimNextUpload(): Promise<Upload | null> {
+  return queryOne<Upload>(
+    `UPDATE uploads
+     SET status = 'processing', processing_attempts = processing_attempts + 1
+     WHERE id = (
+       SELECT id FROM uploads
+       WHERE status = 'pending'
+       ORDER BY created_at
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     RETURNING *`,
+  )
+}
+
+// Recovers jobs left in 'processing' by a crashed worker: those untouched for
+// `staleMinutes` are requeued, or marked failed once they reach `maxAttempts`.
+// Returns how many rows were recovered.
+export async function recoverStaleProcessing(
+  staleMinutes: number,
+  maxAttempts: number,
+): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `UPDATE uploads
+     SET status = CASE WHEN processing_attempts >= $2 THEN 'failed' ELSE 'pending' END,
+         processing_error = CASE WHEN processing_attempts >= $2
+           THEN 'Processing did not complete after repeated attempts'
+           ELSE processing_error END,
+         processed_at = CASE WHEN processing_attempts >= $2 THEN now() ELSE processed_at END
+     WHERE status = 'processing'
+       AND updated_at < now() - make_interval(mins => $1)
+     RETURNING id`,
+    [staleMinutes, maxAttempts],
+  )
+  return rows.length
+}
+
+export interface ReadyResult {
+  width?: number | null
+  height?: number | null
+  durationSeconds?: number | null
+  capturedAt?: string | null
+  checksum?: string | null
+  metadata?: Record<string, unknown> | null
+}
+
+// Success path: persist extracted metadata, clear any prior error, mark ready.
+// checksum is COALESCEd so a media type we don't hash (e.g. a large video) keeps
+// any value already stored rather than nulling it.
+export function markUploadReady(id: string, result: ReadyResult): Promise<Upload | null> {
+  return queryOne<Upload>(
+    `UPDATE uploads SET
+       status = 'ready',
+       width = $2,
+       height = $3,
+       duration_seconds = $4,
+       captured_at = $5,
+       checksum = COALESCE($6, checksum),
+       metadata = $7,
+       processing_error = NULL,
+       processed_at = now()
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id,
+      result.width ?? null,
+      result.height ?? null,
+      result.durationSeconds ?? null,
+      result.capturedAt ?? null,
+      result.checksum ?? null,
+      result.metadata ?? null,
+    ],
+  )
+}
+
+// Failure path: record the error against the job so it stays observable and
+// retryable rather than lost. Capped to keep the column bounded.
+export function markUploadFailed(id: string, error: string): Promise<Upload | null> {
+  return queryOne<Upload>(
+    `UPDATE uploads SET status = 'failed', processing_error = $2, processed_at = now()
+     WHERE id = $1
+     RETURNING *`,
+    [id, error.slice(0, 2000)],
+  )
+}
+
 export interface UpsertVariantInput {
   uploadId: string
   variant: UploadVariantKind

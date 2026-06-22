@@ -86,6 +86,9 @@ export interface Upload {
   durationSeconds: number | null
   capturedAt: string | null
   metadata: Record<string, unknown> | null
+  processingAttempts: number
+  processingError: string | null
+  processedAt: string | null
   createdAt: string
   updatedAt: string
 }

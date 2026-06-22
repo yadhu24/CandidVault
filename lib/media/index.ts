@@ -1,19 +1,11 @@
-// Shared stubs for thumbnail generation and metadata extraction.
-// Implemented in full in the worker; these types/helpers are shared.
-
-export interface MediaMetadata {
-  width?: number
-  height?: number
-  durationSeconds?: number
-  takenAt?: string
-  cameraMake?: string
-  cameraModel?: string
-}
-
-export function buildStorageKey(eventId: string, filename: string): string {
-  return `events/${eventId}/original/${filename}`
-}
-
-export function buildThumbnailKey(eventId: string, assetId: string): string {
-  return `events/${eventId}/thumbnails/${assetId}.webp`
-}
+// Media processing helpers shared with the worker (CLAUDE.md §3). sharp is
+// loaded lazily inside ./image, so importing this barrel never pulls the native
+// module into a bundle.
+export { sha256 } from './hash'
+export {
+  IMAGE_VARIANTS,
+  imageProcessingAvailable,
+  readImageDimensions,
+  renderImageVariant,
+} from './image'
+export type { ImageDimensions, RenderedVariant, VariantSpec } from './types'
