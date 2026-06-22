@@ -1,9 +1,8 @@
 // The public guest-upload URL is derived from the event slug — already unique
-// per event, so it is the event's unique upload URL. NEXT_PUBLIC_APP_URL must be
-// set for the QR to encode an absolute, scannable link.
-export function appBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/+$/, '')
-}
+// per event, so it is the event's unique upload URL. The absolute form is built
+// from the app's single base-URL source (see lib/app-url) so the QR encodes a
+// scannable link to the production domain.
+import { appBaseUrl } from '@/lib/app-url'
 
 export function eventUploadPath(slug: string): string {
   return `/e/${slug}`
