@@ -10,6 +10,7 @@ import {
 } from '@/lib/validation/media'
 import { buildOriginalObjectKey } from '@/lib/storage/keys'
 import { createMultipartUpload, createUploadPresignedUrl } from '@/lib/storage'
+import { eventUploadCapStatus } from '@/lib/uploads/event-caps'
 import { getOrCreateGuestSession } from '@/lib/uploads/guest-session'
 import { sanitizeFilename } from '@/lib/uploads/filename'
 import { signUploadTicket } from '@/lib/uploads/ticket'
@@ -50,6 +51,17 @@ export async function POST(request: Request, { params }: Params) {
     const maxBytes = maxBytesForMime(contentType)
     if (fileSizeBytes > maxBytes) {
       return apiError(422, 'FILE_TOO_LARGE', 'This file exceeds the size limit for its type.')
+    }
+
+    // Per-event hard cap: fail fast (declared size) before creating a guest
+    // session or R2 multipart upload. Re-checked authoritatively at confirm.
+    const cap = await eventUploadCapStatus(event.id, fileSizeBytes)
+    if (!cap.ok) {
+      return apiError(
+        409,
+        'EVENT_UPLOAD_LIMIT',
+        'This event has reached its upload limit. Please contact the host.',
+      )
     }
 
     const mediaType = mediaTypeForMime(contentType)

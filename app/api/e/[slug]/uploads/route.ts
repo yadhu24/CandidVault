@@ -1,13 +1,30 @@
 import { apiError, apiJson } from '@/lib/http/responses'
 import { clientIp, rateLimit } from '@/lib/http/rate-limit'
 import { resolvePublicEvent } from '@/lib/events/service'
-import { registerUpload } from '@/lib/db/queries/uploads'
+import { getUploadByStorageKey, registerUpload } from '@/lib/db/queries/uploads'
+import type { Upload } from '@/lib/db/types'
 import { ConfirmUploadSchema } from '@/lib/validation/media'
 import { abortMultipartUpload, completeMultipartUpload, deleteObject, headObject } from '@/lib/storage'
+import { isKeyForEvent } from '@/lib/storage/keys'
+import { eventUploadCapStatus } from '@/lib/uploads/event-caps'
 import { verifyUploadTicket, type UploadTicketPayload } from '@/lib/uploads/ticket'
 
 interface Params {
   params: Promise<{ slug: string }>
+}
+
+// Only ever expose non-sensitive fields — never the storage key or any signed URL.
+function uploadResponse(upload: Upload) {
+  return {
+    upload: {
+      id: upload.id,
+      status: upload.status,
+      moderationStatus: upload.moderationStatus,
+      mediaType: upload.mediaType,
+      originalFilename: upload.originalFilename,
+      createdAt: upload.createdAt,
+    },
+  }
 }
 
 async function safeDelete(key: string) {
@@ -67,6 +84,19 @@ export async function POST(request: Request, { params }: Params) {
       return apiError(403, 'EVENT_NOT_ACCEPTING_UPLOADS', 'This event is not accepting uploads.')
     }
 
+    // Defense-in-depth: the signed ticket binds the key to its event, but assert
+    // the key really lives under this event's prefix before acting on it.
+    if (!isKeyForEvent(ticket.key, resolution.event.id)) {
+      return apiError(400, 'INVALID_TICKET', 'This upload ticket is invalid or has expired.')
+    }
+
+    // Idempotent retry: if this object is already registered, return it without
+    // re-completing the multipart upload or re-counting it against the cap.
+    const existing = await getUploadByStorageKey(ticket.key)
+    if (existing) {
+      return apiJson(uploadResponse(existing), 201)
+    }
+
     // Multipart: assemble the parts into the final object before validating.
     if (ticket.multipart) {
       const parts = parsed.data.parts
@@ -96,6 +126,18 @@ export async function POST(request: Request, { params }: Params) {
       return apiError(422, 'UPLOAD_REJECTED', 'The uploaded file failed validation.')
     }
 
+    // Authoritative per-event cap re-check against the REAL bytes (the presign
+    // check used the client-declared size). Reject + delete if it would exceed.
+    const cap = await eventUploadCapStatus(ticket.eventId, head.contentLength)
+    if (!cap.ok) {
+      await safeDelete(ticket.key)
+      return apiError(
+        409,
+        'EVENT_UPLOAD_LIMIT',
+        'This event has reached its upload limit. Please contact the host.',
+      )
+    }
+
     const upload = await registerUpload({
       eventId: ticket.eventId,
       storageKey: ticket.key,
@@ -107,20 +149,7 @@ export async function POST(request: Request, { params }: Params) {
       originalFilename: ticket.filename,
     })
 
-    // Only non-sensitive fields — never the storage key or any signed URL.
-    return apiJson(
-      {
-        upload: {
-          id: upload.id,
-          status: upload.status,
-          moderationStatus: upload.moderationStatus,
-          mediaType: upload.mediaType,
-          originalFilename: upload.originalFilename,
-          createdAt: upload.createdAt,
-        },
-      },
-      201,
-    )
+    return apiJson(uploadResponse(upload), 201)
   } catch (err) {
     console.error('[uploads.confirm] unexpected error', { name: (err as { name?: string })?.name })
     return apiError(500, 'INTERNAL_ERROR', 'Could not finalize the upload. Please try again.')

@@ -3,6 +3,7 @@ import { clientIp, rateLimit } from '@/lib/http/rate-limit'
 import { resolvePublicEvent } from '@/lib/events/service'
 import { PresignPartsSchema } from '@/lib/validation/media'
 import { presignUploadPart } from '@/lib/storage'
+import { isKeyForEvent } from '@/lib/storage/keys'
 import { verifyUploadTicket } from '@/lib/uploads/ticket'
 
 interface Params {
@@ -36,6 +37,9 @@ export async function POST(request: Request, { params }: Params) {
     const resolution = await resolvePublicEvent(slug)
     if (resolution.state !== 'ok' || resolution.event.id !== ticket.eventId) {
       return apiError(403, 'EVENT_NOT_ACCEPTING_UPLOADS', 'This event is not accepting uploads.')
+    }
+    if (!isKeyForEvent(ticket.key, resolution.event.id)) {
+      return apiError(400, 'INVALID_TICKET', 'This upload ticket is invalid or has expired.')
     }
 
     const urls: Record<number, string> = {}

@@ -83,6 +83,31 @@ export function getUploadById(id: string): Promise<Upload | null> {
   return queryOne<Upload>(`SELECT * FROM uploads WHERE id = $1`, [id])
 }
 
+// Lookup by the (unique) storage key. Used to make upload confirmation idempotent:
+// a retried confirm for an already-registered object returns the existing row
+// instead of re-completing a multipart upload or double-counting against caps.
+export function getUploadByStorageKey(storageKey: string): Promise<Upload | null> {
+  return queryOne<Upload>(`SELECT * FROM uploads WHERE storage_key = $1`, [storageKey])
+}
+
+export interface EventUploadUsage {
+  count: number
+  totalBytes: number
+}
+
+// Current per-event consumption, for the upload caps. Counts every row regardless
+// of moderation status — a pending/approved/rejected upload all hold a slot and
+// storage until purged. int8 sum is parsed to a JS number in client.ts.
+export async function getEventUploadUsage(eventId: string): Promise<EventUploadUsage> {
+  const row = await queryOne<{ count: number; totalBytes: number }>(
+    `SELECT COUNT(*)::int AS count, COALESCE(SUM(file_size_bytes), 0)::bigint AS total_bytes
+     FROM uploads
+     WHERE event_id = $1`,
+    [eventId],
+  )
+  return { count: row?.count ?? 0, totalBytes: row?.totalBytes ?? 0 }
+}
+
 export interface ListUploadsOptions extends PageOptions {
   moderationStatus?: ModerationStatus
 }

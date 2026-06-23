@@ -17,6 +17,13 @@ export function isOriginalObjectKey(key: string): boolean {
   return /^events\/[0-9a-f-]{36}\/originals\/[0-9a-f-]{36}\.[a-z0-9]+$/.test(key)
 }
 
+// Belt-and-suspenders: a signed ticket already binds the key to its event, but
+// confirming routes also assert the key lives under the resolved event's prefix
+// so a (hypothetical) signing bug could never let a ticket touch another event.
+export function isKeyForEvent(key: string, eventId: string): boolean {
+  return key.startsWith(`events/${eventId}/`)
+}
+
 export const EXPORTS_SEGMENT = 'exports'
 
 // Deterministic per export id, so a retried export overwrites the same object.

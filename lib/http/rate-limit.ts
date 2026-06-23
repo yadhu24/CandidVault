@@ -29,8 +29,28 @@ export function rateLimit(key: string, limit: number, windowMs: number): boolean
   return true
 }
 
+// Deriving a client IP is only as trustworthy as the proxy in front of us. A
+// client can freely set X-Forwarded-For, so its LEFTMOST value is attacker-
+// controlled and must not key a rate limiter (spoofing it = a fresh bucket per
+// request). We prefer a single-value header that the deployment's trusted edge
+// sets/overwrites:
+//   * Vercel & many proxies: x-real-ip
+//   * Cloudflare:            cf-connecting-ip
+// Set TRUSTED_IP_HEADER if your edge uses a different one. Without a trusted
+// proxy guaranteeing the header, IP-based limiting is best-effort only.
 export function clientIp(request: Request): string {
+  const configured = process.env.TRUSTED_IP_HEADER
+  if (configured) {
+    const v = request.headers.get(configured)
+    if (v) return v.split(',')[0].trim()
+  }
+  const realIp = request.headers.get('x-real-ip')
+  if (realIp) return realIp.trim()
+  const cfIp = request.headers.get('cf-connecting-ip')
+  if (cfIp) return cfIp.trim()
+  // Last resort only: spoofable, but keeps limiting functional in dev/local where
+  // no trusted proxy header exists.
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0].trim()
-  return request.headers.get('x-real-ip') ?? 'unknown'
+  return 'unknown'
 }
