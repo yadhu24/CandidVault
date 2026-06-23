@@ -1,6 +1,7 @@
 import { once } from 'node:events'
 import { PassThrough } from 'node:stream'
 import archiver from 'archiver'
+import { track } from '@/lib/analytics/track'
 import {
   markExportFailed,
   markExportReady,
@@ -74,6 +75,12 @@ export async function processExport(exp: Export): Promise<{ ok: boolean; detail:
       fileSizeBytes: head?.contentLength ?? 0,
       itemCount: originals.length,
       expiresAt: new Date(Date.now() + RETENTION_DAYS * 86_400_000).toISOString(),
+    })
+    // Worker runs outside the Next runtime, so track directly (no next/after).
+    await track('export_completed', {
+      eventId: exp.eventId,
+      actorType: 'system',
+      properties: { itemCount: originals.length, bytes: head?.contentLength ?? 0 },
     })
     return { ok: true, detail: `zipped ${originals.length} file(s)` }
   } catch (err) {

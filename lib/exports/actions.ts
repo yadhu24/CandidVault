@@ -1,7 +1,9 @@
 'use server'
 
+import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { requirePhotographer } from '@/lib/account/photographers'
+import { track } from '@/lib/analytics/track'
 import { getEventByIdForPhotographer } from '@/lib/db/queries/events'
 import { createExport, getInFlightExport } from '@/lib/db/queries/exports'
 import { countUploadsByModeration } from '@/lib/db/queries/moderation'
@@ -42,6 +44,14 @@ export async function requestExportAction(eventId: string): Promise<RequestExpor
   }
 
   await createExport({ eventId, requestedBy: user.id, scope: 'approved' })
+  after(() =>
+    track('export_requested', {
+      eventId,
+      actorId: user.id,
+      actorType: 'photographer',
+      properties: { approvedCount: counts.approved },
+    }),
+  )
   revalidatePath(`/events/${eventId}/export`)
   return { ok: true }
 }

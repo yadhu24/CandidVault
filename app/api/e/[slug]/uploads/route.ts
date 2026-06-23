@@ -1,7 +1,9 @@
+import { after } from 'next/server'
 import { apiError, apiJson } from '@/lib/http/responses'
 import { clientIp, rateLimit } from '@/lib/http/rate-limit'
 import { resolvePublicEvent } from '@/lib/events/service'
 import { getUploadByStorageKey, registerUpload } from '@/lib/db/queries/uploads'
+import { track } from '@/lib/analytics/track'
 import type { Upload } from '@/lib/db/types'
 import { ConfirmUploadSchema } from '@/lib/validation/media'
 import { abortMultipartUpload, completeMultipartUpload, deleteObject, headObject } from '@/lib/storage'
@@ -25,6 +27,12 @@ function uploadResponse(upload: Upload) {
       createdAt: upload.createdAt,
     },
   }
+}
+
+// Records an upload-pipeline failure with its reason (CLAUDE.md: log failure
+// reasons where feasible). after() so it runs without delaying the response.
+function trackFailed(eventId: string, reason: string) {
+  after(() => track('upload_failed', { eventId, actorType: 'guest', properties: { reason } }))
 }
 
 async function safeDelete(key: string) {
@@ -81,6 +89,7 @@ export async function POST(request: Request, { params }: Params) {
     const resolution = await resolvePublicEvent(slug)
     if (resolution.state !== 'ok' || resolution.event.id !== ticket.eventId) {
       await cleanupAbandoned(ticket)
+      trackFailed(ticket.eventId, 'event_inactive')
       return apiError(403, 'EVENT_NOT_ACCEPTING_UPLOADS', 'This event is not accepting uploads.')
     }
 
@@ -102,6 +111,7 @@ export async function POST(request: Request, { params }: Params) {
       const parts = parsed.data.parts
       if (!parts || parts.length === 0) {
         await cleanupAbandoned(ticket)
+        trackFailed(ticket.eventId, 'missing_parts')
         return apiError(422, 'INVALID_CONFIRM_REQUEST', 'Missing uploaded parts.')
       }
       try {
@@ -111,6 +121,7 @@ export async function POST(request: Request, { params }: Params) {
           name: (err as { name?: string })?.name,
         })
         await cleanupAbandoned(ticket)
+        trackFailed(ticket.eventId, 'multipart_assembly')
         return apiError(422, 'UPLOAD_REJECTED', 'The upload could not be assembled. Please retry.')
       }
     }
@@ -119,10 +130,12 @@ export async function POST(request: Request, { params }: Params) {
     // be trusted on size/type even though the URL pinned the type.
     const head = await headObject(ticket.key)
     if (!head) {
+      trackFailed(ticket.eventId, 'object_missing')
       return apiError(409, 'UPLOAD_NOT_FOUND', 'No uploaded file was found for this ticket.')
     }
     if (head.contentLength > ticket.maxBytes || head.contentType !== ticket.contentType) {
       await safeDelete(ticket.key)
+      trackFailed(ticket.eventId, 'validation')
       return apiError(422, 'UPLOAD_REJECTED', 'The uploaded file failed validation.')
     }
 
@@ -131,6 +144,7 @@ export async function POST(request: Request, { params }: Params) {
     const cap = await eventUploadCapStatus(ticket.eventId, head.contentLength)
     if (!cap.ok) {
       await safeDelete(ticket.key)
+      trackFailed(ticket.eventId, `cap_${cap.reason}`)
       return apiError(
         409,
         'EVENT_UPLOAD_LIMIT',
@@ -149,9 +163,21 @@ export async function POST(request: Request, { params }: Params) {
       originalFilename: ticket.filename,
     })
 
+    after(() =>
+      track('upload_completed', {
+        eventId: ticket.eventId,
+        actorType: 'guest',
+        properties: {
+          mediaType: ticket.mediaType,
+          bytes: head.contentLength,
+          mode: ticket.multipart ? 'multipart' : 'single',
+        },
+      }),
+    )
     return apiJson(uploadResponse(upload), 201)
   } catch (err) {
     console.error('[uploads.confirm] unexpected error', { name: (err as { name?: string })?.name })
+    trackFailed(ticket.eventId, 'internal')
     return apiError(500, 'INTERNAL_ERROR', 'Could not finalize the upload. Please try again.')
   }
 }

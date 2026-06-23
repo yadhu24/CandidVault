@@ -62,7 +62,7 @@ export default async function EventOverviewPage({ params }: Props) {
             {uploadUrl}
           </code>
           <div className="flex flex-wrap gap-2">
-            <CopyLinkButton url={uploadUrl} />
+            <CopyLinkButton url={uploadUrl} eventId={event.id} />
             <a
               href={`/api/events/${event.id}/qr`}
               download={`${event.slug}-qr.png`}

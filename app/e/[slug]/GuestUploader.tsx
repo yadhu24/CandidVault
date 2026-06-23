@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Dropzone, Input, UploadProgressItem } from '@/components/ui'
 import { CameraIcon, CheckIcon, SparkleIcon } from '@/components/ui/icons'
+import { trackClient } from '@/lib/analytics/client'
 import { compressImage } from '@/lib/uploads/compress-client'
 import { isAllowedMimeType, maxBytesForMime } from '@/lib/validation/media'
 
@@ -120,7 +121,15 @@ const removePending = (slug: string, name: string) =>
 
 // ==========================================================================
 
-export function GuestUploader({ slug, eventName }: { slug: string; eventName?: string }) {
+export function GuestUploader({
+  slug,
+  eventId,
+  eventName,
+}: {
+  slug: string
+  eventId?: string
+  eventName?: string
+}) {
   const [name, setName] = useState('')
   const [items, setItems] = useState<UploadItem[]>([])
   const [objectUrls] = useState<string[]>(() => [])
@@ -294,6 +303,10 @@ export function GuestUploader({ slug, eventName }: { slug: string; eventName?: s
       setItems((prev) => [...prev, item])
       if (item.status === 'queued') {
         addPending(slug, file.name)
+        trackClient('upload_started', {
+          eventId,
+          properties: { mediaType: file.type.startsWith('video/') ? 'video' : 'photo' },
+        })
         await upload(item)
       }
     }

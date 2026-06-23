@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { requirePhotographer } from '@/lib/account/photographers'
+import { track } from '@/lib/analytics/track'
 import { CreateEventSchema } from '@/lib/validation/events'
 import { createEventForPhotographer } from './service'
 import type { CreateEventState } from './types'
@@ -43,6 +44,13 @@ export async function createEventAction(
     eventDate: parsed.data.eventDate,
     venue: emptyToNull(parsed.data.venue),
     description: emptyToNull(parsed.data.description),
+  })
+
+  await track('event_created', {
+    eventId: event.id,
+    actorId: user.id,
+    actorType: 'photographer',
+    properties: { eventType: event.eventType },
   })
 
   // Refresh the dashboard list, then go straight to the new event's detail page.

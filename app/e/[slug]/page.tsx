@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { after } from 'next/server'
+import { track } from '@/lib/analytics/track'
 import { formatEventDate } from '@/lib/events/format'
 import { resolvePublicEvent } from '@/lib/events/service'
 import { AlertIcon, CalendarIcon, MapPinIcon } from '@/components/ui/icons'
@@ -17,6 +19,18 @@ const INACTIVE_MESSAGE: Record<string, string> = {
 export default async function GuestUploadPage({ params }: Props) {
   const { slug } = await params
   const result = await resolvePublicEvent(slug)
+
+  // A real event was opened (open for uploads or not) — record the page view.
+  if (result.state !== 'not_found') {
+    const event = result.event
+    after(() =>
+      track('public_page_opened', {
+        eventId: event.id,
+        actorType: 'guest',
+        properties: { active: result.state === 'ok' },
+      }),
+    )
+  }
 
   if (result.state === 'not_found') {
     return (
@@ -61,7 +75,7 @@ export default async function GuestUploadPage({ params }: Props) {
           )}
         </div>
       </header>
-      <GuestUploader slug={event.slug} eventName={event.name} />
+      <GuestUploader slug={event.slug} eventId={event.id} eventName={event.name} />
     </PublicShell>
   )
 }

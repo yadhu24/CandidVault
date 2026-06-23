@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "worker": "node --env-file-if-exists=.env --import tsx worker/index.ts",
+    "analytics:summary": "node --env-file-if-exists=.env --import tsx scripts/analytics-summary.ts",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs",
     "db:reset": "node scripts/reset.mjs && npm run db:migrate && npm run db:seed"

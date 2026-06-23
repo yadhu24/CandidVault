@@ -148,3 +148,15 @@ export interface Export {
   createdAt: string
   updatedAt: string
 }
+
+export type AnalyticsActorType = 'guest' | 'photographer' | 'system'
+
+export interface AnalyticsEvent {
+  id: string
+  name: string
+  eventId: string | null
+  actorId: string | null
+  actorType: AnalyticsActorType
+  properties: Record<string, unknown>
+  createdAt: string
+}

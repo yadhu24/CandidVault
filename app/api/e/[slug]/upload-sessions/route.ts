@@ -1,3 +1,4 @@
+import { after } from 'next/server'
 import { apiError, apiJson } from '@/lib/http/responses'
 import { clientIp, rateLimit } from '@/lib/http/rate-limit'
 import { resolvePublicEvent } from '@/lib/events/service'
@@ -8,6 +9,7 @@ import {
   maxBytesForMime,
   mediaTypeForMime,
 } from '@/lib/validation/media'
+import { track } from '@/lib/analytics/track'
 import { buildOriginalObjectKey } from '@/lib/storage/keys'
 import { createMultipartUpload, createUploadPresignedUrl } from '@/lib/storage'
 import { eventUploadCapStatus } from '@/lib/uploads/event-caps'
@@ -50,6 +52,13 @@ export async function POST(request: Request, { params }: Params) {
 
     const maxBytes = maxBytesForMime(contentType)
     if (fileSizeBytes > maxBytes) {
+      after(() =>
+        track('upload_failed', {
+          eventId: event.id,
+          actorType: 'guest',
+          properties: { reason: 'file_too_large' },
+        }),
+      )
       return apiError(422, 'FILE_TOO_LARGE', 'This file exceeds the size limit for its type.')
     }
 
@@ -57,6 +66,13 @@ export async function POST(request: Request, { params }: Params) {
     // session or R2 multipart upload. Re-checked authoritatively at confirm.
     const cap = await eventUploadCapStatus(event.id, fileSizeBytes)
     if (!cap.ok) {
+      after(() =>
+        track('upload_failed', {
+          eventId: event.id,
+          actorType: 'guest',
+          properties: { reason: `cap_${cap.reason}` },
+        }),
+      )
       return apiError(
         409,
         'EVENT_UPLOAD_LIMIT',

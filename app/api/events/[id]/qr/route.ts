@@ -1,4 +1,6 @@
+import { after } from 'next/server'
 import { requirePhotographer } from '@/lib/account/photographers'
+import { track } from '@/lib/analytics/track'
 import { getOwnedEventOrNotFound } from '@/lib/events/service'
 import { eventUploadUrl } from '@/lib/events/url'
 import { qrPngBuffer } from '@/lib/qr'
@@ -12,6 +14,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const event = await getOwnedEventOrNotFound(id, user.id)
 
   const png = await qrPngBuffer(eventUploadUrl(event.slug))
+
+  after(() =>
+    track('qr_downloaded', { eventId: event.id, actorId: user.id, actorType: 'photographer' }),
+  )
 
   return new Response(new Uint8Array(png), {
     headers: {
