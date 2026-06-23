@@ -11,7 +11,9 @@ export {
 export {
   buildOriginalObjectKey,
   buildVariantObjectKey,
+  buildExportObjectKey,
   isOriginalObjectKey,
   ORIGINALS_SEGMENT,
   VARIANTS_SEGMENT,
+  EXPORTS_SEGMENT,
 } from './keys'

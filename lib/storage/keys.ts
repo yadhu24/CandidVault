@@ -17,6 +17,14 @@ export function isOriginalObjectKey(key: string): boolean {
   return /^events\/[0-9a-f-]{36}\/originals\/[0-9a-f-]{36}\.[a-z0-9]+$/.test(key)
 }
 
+export const EXPORTS_SEGMENT = 'exports'
+
+// Deterministic per export id, so a retried export overwrites the same object.
+// Layout: events/{eventId}/exports/{exportId}.zip
+export function buildExportObjectKey(eventId: string, exportId: string): string {
+  return `events/${eventId}/${EXPORTS_SEGMENT}/${exportId}.zip`
+}
+
 export const VARIANTS_SEGMENT = 'variants'
 
 // Derived-rendition key. Deterministic per (upload, variant) so re-running a

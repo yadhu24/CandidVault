@@ -8,11 +8,13 @@
 // Run with:  npm run worker   (loads .env if present, runs TS via tsx)
 
 import { getDb } from '@/lib/db/client'
+import { claimNextExport, recoverStaleExports } from '@/lib/db/queries/exports'
 import {
   claimNextUpload,
   markUploadFailed,
   recoverStaleProcessing,
 } from '@/lib/db/queries/uploads'
+import { processExport } from '@/lib/jobs/build-export'
 import { processUpload } from '@/lib/jobs/process-upload'
 
 const IDLE_DELAY_MS = 3000 // pause between polls when the queue is empty
@@ -47,12 +49,24 @@ async function drainQueue(): Promise<void> {
   }
 }
 
+// Build every claimable ZIP export until the queue drains.
+async function drainExports(): Promise<void> {
+  while (running) {
+    const exp = await claimNextExport()
+    if (!exp) return
+    const result = await processExport(exp)
+    console.log('[worker] export', { exportId: exp.id, ok: result.ok, detail: result.detail })
+  }
+}
+
 async function runWorker(): Promise<void> {
-  console.log('[worker] started — polling for uploads')
+  console.log('[worker] started — polling for uploads + exports')
   while (running) {
     try {
       await recoverStaleProcessing(STALE_MINUTES, MAX_ATTEMPTS)
       await drainQueue()
+      await recoverStaleExports(STALE_MINUTES)
+      await drainExports()
     } catch (err) {
       // A loop-level failure (e.g. transient DB error) must not kill the worker;
       // log and retry on the next tick.

@@ -201,6 +201,26 @@ export function setUploadFavorite(
   )
 }
 
+export interface ExportSource {
+  id: string
+  storageKey: string
+  originalFilename: string | null
+  mimeType: string
+}
+
+// All approved originals for an event, oldest first — the source list for a ZIP
+// export. No pagination: the export job streams every one. Storage keys stay
+// server-side (worker reads them directly).
+export function listApprovedOriginalsForExport(eventId: string): Promise<ExportSource[]> {
+  return query<ExportSource>(
+    `SELECT id, storage_key, original_filename, mime_type
+     FROM uploads
+     WHERE event_id = $1 AND moderation_status = 'approved'
+     ORDER BY created_at`,
+    [eventId],
+  )
+}
+
 // Worker: claim unfinished media. Backed by the partial index
 // idx_uploads_pending_processing so it stays cheap as the table grows.
 export function listPendingProcessing(limit = 20): Promise<Upload[]> {
