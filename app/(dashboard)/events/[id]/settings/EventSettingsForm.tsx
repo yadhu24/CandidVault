@@ -1,8 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import { Button, Field, fieldControlClassName, Input } from '@/components/ui'
 import { updateEventAction } from '@/lib/events/actions'
 import type { UpdateEventState } from '@/lib/events/types'
 import {
@@ -15,9 +14,6 @@ import type { Event } from '@/types'
 import { cn } from '@/lib/utils'
 
 const initialState: UpdateEventState = {}
-
-const controlClass =
-  'w-full rounded-md border border-input bg-card px-3 text-body-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50'
 
 export function EventSettingsForm({ event }: { event: Event }) {
   const [state, formAction, pending] = useActionState(updateEventAction, initialState)
@@ -43,7 +39,7 @@ export function EventSettingsForm({ event }: { event: Event }) {
             id="eventType"
             name="eventType"
             defaultValue={event.eventType}
-            className={cn('h-11', controlClass, fe.eventType && 'border-destructive')}
+            className={cn('h-11', fieldControlClassName, fe.eventType && 'border-destructive')}
           >
             {EVENT_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -81,7 +77,7 @@ export function EventSettingsForm({ event }: { event: Event }) {
           rows={3}
           maxLength={500}
           defaultValue={event.description ?? ''}
-          className={cn('py-2', controlClass, fe.description && 'border-destructive')}
+          className={cn('py-2', fieldControlClassName, fe.description && 'border-destructive')}
         />
       </Field>
 
@@ -90,7 +86,7 @@ export function EventSettingsForm({ event }: { event: Event }) {
           id="status"
           name="status"
           defaultValue={event.status}
-          className={cn('h-11', controlClass, fe.status && 'border-destructive')}
+          className={cn('h-11', fieldControlClassName, fe.status && 'border-destructive')}
         >
           {EVENT_STATUSES.map((status) => (
             <option key={status} value={status}>
@@ -113,28 +109,5 @@ export function EventSettingsForm({ event }: { event: Event }) {
         )}
       </div>
     </form>
-  )
-}
-
-// Label + error wrapper matching the Input primitive, for native select/textarea.
-function Field({
-  id,
-  label,
-  error,
-  children,
-}: {
-  id: string
-  label: string
-  error?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-body-sm font-medium text-foreground">
-        {label}
-      </label>
-      {children}
-      {error && <p className="text-caption text-destructive">{error}</p>}
-    </div>
   )
 }

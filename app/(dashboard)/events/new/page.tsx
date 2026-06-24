@@ -6,10 +6,13 @@ export default function NewEventPage() {
   return (
     <div className="mx-auto max-w-xl space-y-6">
       <div>
-        <Link href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-900">
+        <Link
+          href="/dashboard"
+          className="text-body-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
           ← Back to events
         </Link>
-        <h1 className="mt-2 text-2xl font-bold">Create event</h1>
+        <h1 className="mt-2 font-display text-h1 text-foreground">Create event</h1>
       </div>
       <Card>
         <CardContent>

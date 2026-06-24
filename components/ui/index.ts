@@ -1,6 +1,7 @@
 // Public surface of the design-system UI kit. Import from '@/components/ui'.
 export { Button, type ButtonProps } from './Button'
 export { Input, type InputProps } from './Input'
+export { Field, fieldControlClassName } from './Field'
 export { Card, CardHeader, CardContent, CardFooter } from './Card'
 export { Badge } from './Badge'
 export { Modal } from './Modal'

@@ -2,8 +2,7 @@
 
 import { useActionState } from 'react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import { Button, Field, fieldControlClassName, Input } from '@/components/ui'
 import { createEventAction } from '@/lib/events/actions'
 import type { CreateEventState } from '@/lib/events/types'
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from '@/lib/validation/events'
@@ -11,34 +10,28 @@ import { cn } from '@/lib/utils'
 
 const initialState: CreateEventState = {}
 
-const fieldClass =
-  'w-full rounded-md border border-zinc-200 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900'
-
 export function CreateEventForm() {
   const [state, formAction, pending] = useActionState(createEventAction, initialState)
   const fe = state.fieldErrors ?? {}
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-5">
       <Input
         id="name"
         name="name"
         label="Event title"
-        placeholder="e.g. Priya &amp; Sam's Wedding"
+        placeholder="e.g. Priya & Sam's Wedding"
         required
         maxLength={120}
         error={fe.name}
       />
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="eventType" className="text-sm font-medium text-zinc-700">
-          Event type
-        </label>
+      <Field id="eventType" label="Event type" error={fe.eventType}>
         <select
           id="eventType"
           name="eventType"
           defaultValue="wedding"
-          className={cn('h-10', fieldClass, fe.eventType && 'border-red-500')}
+          className={cn('h-11', fieldControlClassName, fe.eventType && 'border-destructive')}
         >
           {EVENT_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -46,8 +39,7 @@ export function CreateEventForm() {
             </option>
           ))}
         </select>
-        {fe.eventType && <p className="text-xs text-red-500">{fe.eventType}</p>}
-      </div>
+      </Field>
 
       <Input
         id="eventDate"
@@ -67,27 +59,26 @@ export function CreateEventForm() {
         error={fe.venue}
       />
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="description" className="text-sm font-medium text-zinc-700">
-          Description (optional)
-        </label>
+      <Field id="description" label="Description (optional)" error={fe.description}>
         <textarea
           id="description"
           name="description"
           rows={3}
           maxLength={500}
-          className={cn('py-2', fieldClass, fe.description && 'border-red-500')}
+          className={cn('py-2', fieldControlClassName, fe.description && 'border-destructive')}
         />
-        {fe.description && <p className="text-xs text-red-500">{fe.description}</p>}
-      </div>
+      </Field>
 
-      {state.error && <p className="text-sm text-red-500">{state.error}</p>}
+      {state.error && <p className="text-body-sm text-destructive">{state.error}</p>}
 
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" isLoading={pending}>
           {pending ? 'Creating…' : 'Create event'}
         </Button>
-        <Link href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-900">
+        <Link
+          href="/dashboard"
+          className="text-body-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
           Cancel
         </Link>
       </div>
