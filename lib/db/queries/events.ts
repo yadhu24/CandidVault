@@ -31,10 +31,6 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
   return row as Event
 }
 
-export function getEventById(id: string): Promise<Event | null> {
-  return queryOne<Event>(`SELECT * FROM events WHERE id = $1`, [id])
-}
-
 // Ownership-scoped fetch: returns null when the event doesn't exist OR isn't
 // owned by this photographer, so callers can treat both as "not found".
 export function getEventByIdForPhotographer(
@@ -63,10 +59,6 @@ export function listEventsByPhotographer(
      LIMIT $2 OFFSET $3`,
     [photographerId, limit, offset],
   )
-}
-
-export function updateEventStatus(id: string, status: EventStatus): Promise<Event | null> {
-  return queryOne<Event>(`UPDATE events SET status = $2 WHERE id = $1 RETURNING *`, [id, status])
 }
 
 export interface UpdateEventFields {

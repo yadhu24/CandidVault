@@ -19,10 +19,6 @@ export async function createAlbum(input: CreateAlbumInput): Promise<Album> {
   return row as Album
 }
 
-export function getAlbumById(id: string): Promise<Album | null> {
-  return queryOne<Album>(`SELECT * FROM albums WHERE id = $1`, [id])
-}
-
 export function listAlbumsByEvent(eventId: string): Promise<Album[]> {
   return query<Album>(`SELECT * FROM albums WHERE event_id = $1 ORDER BY position, created_at`, [
     eventId,

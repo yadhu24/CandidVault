@@ -1,24 +1,5 @@
 import { queryOne } from '../query'
-import type { PhotographerProfile, User, UserRole } from '../types'
-
-export interface CreateUserInput {
-  // Supabase Auth user id. Supply it on signup so app rows line up with auth;
-  // omit only for local seeds/tests, where the DB default generates one.
-  id?: string
-  email: string
-  role?: UserRole
-  displayName?: string | null
-}
-
-export async function createUser(input: CreateUserInput): Promise<User> {
-  const row = await queryOne<User>(
-    `INSERT INTO users (id, email, role, display_name)
-     VALUES (COALESCE($1, gen_random_uuid()), lower($2), COALESCE($3, 'photographer'), $4)
-     RETURNING *`,
-    [input.id ?? null, input.email, input.role ?? null, input.displayName ?? null],
-  )
-  return row as User
-}
+import type { PhotographerProfile, User } from '../types'
 
 // Idempotent: used to bootstrap the app-side user row from a Supabase Auth
 // identity on first authenticated request. `id` is the Supabase auth user id.

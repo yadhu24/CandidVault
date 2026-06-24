@@ -31,3 +31,15 @@ In short:
 
 Reusable task playbooks live in [`.claude/skills/`](./.claude/skills/) — see
 that directory's README for the structure and how to extend it.
+
+## Documentation
+
+Feature and operational docs live in [`docs/`](./docs):
+
+- [`design-system.md`](./docs/design-system.md) — tokens, components, usage rules
+- [`upload-processing.md`](./docs/upload-processing.md) — the upload → worker pipeline
+- [`resumable-uploads.md`](./docs/resumable-uploads.md) — chunked/resumable upload flow
+- [`exports.md`](./docs/exports.md) — ZIP export streaming + retention
+- [`analytics.md`](./docs/analytics.md) — product event schema + instrumentation
+- [`security.md`](./docs/security.md) — abuse-prevention posture + manual infra
+- [`testing.md`](./docs/testing.md) — test strategy, layers, and what needs manual QA
