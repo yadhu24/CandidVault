@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { EventStatusBadge } from '@/components/events/EventStatusBadge'
+import { EventStatusBanner } from '@/components/events/EventStatusBanner'
 import { requirePhotographer } from '@/lib/account/photographers'
 import { formatEventDate } from '@/lib/events/format'
 import { getOwnedEventOrNotFound } from '@/lib/events/service'
@@ -33,6 +34,8 @@ export default async function EventDetailLayout({ children, params }: Props) {
           {EVENT_TYPE_LABELS[event.eventType]} · {formatEventDate(event.eventDate)}
         </p>
       </div>
+
+      <EventStatusBanner eventId={event.id} status={event.status} />
 
       <EventTabs eventId={event.id} />
 

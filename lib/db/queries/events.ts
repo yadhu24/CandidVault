@@ -100,6 +100,19 @@ export function updateEventForPhotographer(
   )
 }
 
+// Ownership-scoped status change (publish/close). photographer_id in the
+// predicate so a crafted id can't flip another photographer's event.
+export function setEventStatusForPhotographer(
+  id: string,
+  photographerId: string,
+  status: EventStatus,
+): Promise<Event | null> {
+  return queryOne<Event>(
+    `UPDATE events SET status = $3 WHERE id = $1 AND photographer_id = $2 RETURNING *`,
+    [id, photographerId, status],
+  )
+}
+
 // Ownership-scoped delete. Child rows (uploads, variants, albums, exports,
 // analytics_events, …) are removed by ON DELETE CASCADE / SET NULL from the
 // schema. Returns the deleted id, or null when the event wasn't owned/found.

@@ -6,6 +6,7 @@ import { requirePhotographer } from '@/lib/account/photographers'
 import { track } from '@/lib/analytics/track'
 import {
   deleteEventForPhotographer,
+  setEventStatusForPhotographer,
   updateEventForPhotographer,
 } from '@/lib/db/queries/events'
 import { CreateEventSchema, UpdateEventSchema } from '@/lib/validation/events'
@@ -101,6 +102,19 @@ export async function updateEventAction(
 
   revalidatePath(`/events/${eventId}/settings`)
   revalidatePath(`/events/${eventId}`)
+  revalidatePath('/dashboard')
+  return { ok: true }
+}
+
+// One-click publish from the draft nudge: flips the event to Active so the public
+// QR link starts accepting uploads. Ownership enforced in the SQL predicate.
+export async function publishEventAction(eventId: string): Promise<{ ok: boolean; error?: string }> {
+  const { user } = await requirePhotographer()
+  const updated = await setEventStatusForPhotographer(eventId, user.id, 'active')
+  if (!updated) return { ok: false, error: 'Event not found.' }
+
+  revalidatePath(`/events/${eventId}`)
+  revalidatePath(`/events/${eventId}/settings`)
   revalidatePath('/dashboard')
   return { ok: true }
 }
