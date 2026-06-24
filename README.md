@@ -92,3 +92,4 @@ Feature and operational docs live in [`docs/`](./docs):
 - [`security.md`](./docs/security.md) — abuse-prevention posture + manual infra
 - [`testing.md`](./docs/testing.md) — test strategy, layers, and what needs manual QA
 - [`pilot-readiness.md`](./docs/pilot-readiness.md) — operator, QA, support, triage & release checklists
+- [`backlog.md`](./docs/backlog.md) — next-phase backlog (bugs, hardening, UX, perf, AI, features) with priorities
