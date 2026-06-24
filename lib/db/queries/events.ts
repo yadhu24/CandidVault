@@ -69,6 +69,60 @@ export function updateEventStatus(id: string, status: EventStatus): Promise<Even
   return queryOne<Event>(`UPDATE events SET status = $2 WHERE id = $1 RETURNING *`, [id, status])
 }
 
+export interface UpdateEventFields {
+  name: string
+  eventType: EventType
+  eventDate: string | null
+  venue: string | null
+  description: string | null
+  status: EventStatus
+}
+
+// Ownership-scoped update: photographer_id is in the predicate so a crafted id
+// can't edit another photographer's event (returns null when not owned).
+export function updateEventForPhotographer(
+  id: string,
+  photographerId: string,
+  fields: UpdateEventFields,
+): Promise<Event | null> {
+  return queryOne<Event>(
+    `UPDATE events SET
+       name = $3,
+       event_type = $4,
+       event_date = $5,
+       venue = $6,
+       description = $7,
+       status = $8
+     WHERE id = $1 AND photographer_id = $2
+     RETURNING *`,
+    [
+      id,
+      photographerId,
+      fields.name,
+      fields.eventType,
+      fields.eventDate,
+      fields.venue,
+      fields.description,
+      fields.status,
+    ],
+  )
+}
+
+// Ownership-scoped delete. Child rows (uploads, variants, albums, exports,
+// analytics_events, …) are removed by ON DELETE CASCADE / SET NULL from the
+// schema. Returns the deleted id, or null when the event wasn't owned/found.
+// NOTE: this drops DB rows only — see lib/events/actions for the R2 cleanup gap.
+export async function deleteEventForPhotographer(
+  id: string,
+  photographerId: string,
+): Promise<string | null> {
+  const row = await queryOne<{ id: string }>(
+    `DELETE FROM events WHERE id = $1 AND photographer_id = $2 RETURNING id`,
+    [id, photographerId],
+  )
+  return row?.id ?? null
+}
+
 export function setEventCover(id: string, coverUploadId: string | null): Promise<Event | null> {
   return queryOne<Event>(`UPDATE events SET cover_upload_id = $2 WHERE id = $1 RETURNING *`, [
     id,

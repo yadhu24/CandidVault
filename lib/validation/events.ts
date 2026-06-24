@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { EventType } from '@/types'
+import type { EventStatus, EventType } from '@/types'
 
 // Single source of truth for the event-type taxonomy. Mirrors the CHECK
 // constraint in migrations/0002 — keep them in sync.
@@ -21,6 +21,16 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   other: 'Other',
 }
 
+// Lifecycle states. Mirrors the CHECK constraint in migrations/0001. Only an
+// `active` event accepts guest uploads (see resolvePublicEvent).
+export const EVENT_STATUSES = ['draft', 'active', 'closed'] as const
+
+export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
+  draft: 'Draft — hidden, not accepting uploads',
+  active: 'Active — guests can upload',
+  closed: 'Closed — no longer accepting uploads',
+}
+
 export const CreateEventSchema = z.object({
   name: z.string().trim().min(1, 'Title is required').max(120),
   eventType: z.enum(EVENT_TYPES),
@@ -34,3 +44,10 @@ export const CreateEventSchema = z.object({
 })
 
 export type CreateEventInput = z.infer<typeof CreateEventSchema>
+
+// Settings edit = the create fields plus the lifecycle status.
+export const UpdateEventSchema = CreateEventSchema.extend({
+  status: z.enum(EVENT_STATUSES),
+})
+
+export type UpdateEventInput = z.infer<typeof UpdateEventSchema>
