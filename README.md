@@ -45,6 +45,10 @@ The app is a standard Next.js app; the worker is the one extra process.
    the four `R2_*` vars (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
    `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`) — **not** the Supabase keys or
    `UPLOAD_SIGNING_SECRET`. It exposes no HTTP port, so it needs no public domain.
+   The worker writes a heartbeat to the DB; point an uptime monitor at the app's
+   **`GET /api/health`** (200 = DB reachable + a worker beat in the last 60s;
+   503 = degraded) to get alerted if it dies. Set `WORKER_ID` if you run more than
+   one worker and want stable identifiers.
 3. **Database** — run `npm run db:migrate` against the production database as part
    of each deploy that adds a migration (or apply the SQL via the Supabase editor;
    keep the `schema_migrations` ledger in sync).

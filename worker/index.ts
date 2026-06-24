@@ -7,8 +7,10 @@
 //
 // Run with:  npm run worker   (loads .env if present, runs TS via tsx)
 
+import { hostname } from 'node:os'
 import { getDb } from '@/lib/db/client'
 import { claimNextExport, recoverStaleExports } from '@/lib/db/queries/exports'
+import { recordWorkerHeartbeat } from '@/lib/db/queries/health'
 import {
   claimNextUpload,
   markUploadFailed,
@@ -20,8 +22,26 @@ import { processUpload } from '@/lib/jobs/process-upload'
 const IDLE_DELAY_MS = 3000 // pause between polls when the queue is empty
 const STALE_MINUTES = 10 // a 'processing' row untouched this long = crashed job
 const MAX_ATTEMPTS = 3 // cap automatic recovery of crashed jobs
+const HEARTBEAT_MS = 15_000 // liveness ping cadence (read by /api/health)
+
+// Identifies this worker instance in worker_heartbeats (so multiple workers can
+// report independently). Override with WORKER_ID if hostname isn't stable.
+const WORKER_ID = process.env.WORKER_ID || hostname() || 'worker'
 
 let running = true
+
+// Heartbeat on its own timer, independent of the job loop, so a long-running job
+// (e.g. a big ZIP export) doesn't look like a dead worker. Native CPU work
+// (sharp/ffmpeg) runs off the main thread, so this timer still fires.
+async function beat(): Promise<void> {
+  try {
+    await recordWorkerHeartbeat(WORKER_ID, { pid: process.pid })
+  } catch (err) {
+    console.error('[worker] heartbeat failed', {
+      message: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -60,24 +80,30 @@ async function drainExports(): Promise<void> {
 }
 
 async function runWorker(): Promise<void> {
-  console.log('[worker] started — polling for uploads + exports')
-  while (running) {
-    try {
-      await recoverStaleProcessing(STALE_MINUTES, MAX_ATTEMPTS)
-      await drainQueue()
-      await recoverStaleExports(STALE_MINUTES)
-      await drainExports()
-    } catch (err) {
-      // A loop-level failure (e.g. transient DB error) must not kill the worker;
-      // log and retry on the next tick.
-      console.error('[worker] loop error', {
-        message: err instanceof Error ? err.message : String(err),
-      })
+  console.log(`[worker] started (${WORKER_ID}) — polling for uploads + exports`)
+  await beat()
+  const heartbeat = setInterval(() => void beat(), HEARTBEAT_MS)
+  try {
+    while (running) {
+      try {
+        await recoverStaleProcessing(STALE_MINUTES, MAX_ATTEMPTS)
+        await drainQueue()
+        await recoverStaleExports(STALE_MINUTES)
+        await drainExports()
+      } catch (err) {
+        // A loop-level failure (e.g. transient DB error) must not kill the worker;
+        // log and retry on the next tick.
+        console.error('[worker] loop error', {
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
+      if (!running) break
+      await sleep(IDLE_DELAY_MS)
     }
-    if (!running) break
-    await sleep(IDLE_DELAY_MS)
+  } finally {
+    clearInterval(heartbeat)
+    await getDb().end()
   }
-  await getDb().end()
   console.log('[worker] stopped cleanly')
 }
 

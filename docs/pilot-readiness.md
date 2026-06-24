@@ -96,6 +96,8 @@ Most guest-side failures are R2 configuration. Work top to bottom.
 | Thumbnails never appear / export stuck "processing" | **worker not running** | Start `npm run worker`; check its logs. Stale exports auto-fail after ~10 min. |
 
 **Where to look**
+- Worker liveness: `GET /api/health` (200 = DB ok + a worker beat in the last 60s;
+  503 = degraded). Point an uptime monitor at it so you're alerted if the worker dies.
 - Guest browser: console + network tab (the failing request + its response code).
 - App logs: structured, keyed by error `code`.
 - Worker logs: lines prefixed `[worker]` (per upload/export, with ok + detail).
@@ -183,6 +185,7 @@ Be honest with pilot partners about these. Fuller detail in
 - [ ] Request export → Ready → download → ZIP opens with the originals.
 
 **Post-deploy**
+- [ ] `GET /api/health` returns 200; add it to your uptime monitor.
 - [ ] Worker logs clean; `npm run analytics:summary` shows events flowing.
 - [ ] Delete the throwaway test event.
 - [ ] Know your rollback: redeploy the previous build; migrations are

@@ -16,7 +16,7 @@ Grounded in the current code; file references included where useful. See also
 
 | P | Item | Notes |
 |---|------|-------|
-| **P0** | **Moderation queue shows only the first ~50 uploads** | `uploads/page.tsx` → `listUploadsForModeration` uses the default page size with no load-more/pagination in `ModerationQueue.tsx`. A real wedding exceeds 50; the rest can't be moderated. The gallery already has infinite scroll — port the same pattern. |
+| ~~P0~~ ✅ | **Moderation queue shows only the first ~50 uploads** | **Shipped.** Infinite-scroll load-more via `GET /api/events/[id]/uploads` + `lib/moderation/serialize.ts`, mirroring the gallery; decisions update optimistically. |
 | **P0** | **Verify HEIC decode in the deployed worker** | iPhone's default is HEIC. `lib/media/image.ts` transcodes via `sharp`; prebuilt `sharp`/libvips may not include HEIF decode. If it fails, iPhone uploads never get a viewable JPEG/thumbnail. Verify end-to-end on the worker image; if missing, add libheif or a fallback. |
 | **P1** | **Presigned thumbnail URLs expire after 15 min** | Galleries/moderation presign at render; a tab left open >15 min shows broken images until reload. Refresh on focus, or lengthen TTL for derivatives. |
 | **P2** | **Stale-export auto-fail window is fixed at 10 min** | A very large export could exceed it and get marked failed mid-build. Make the stale threshold proportional to size, or heartbeat the job. |
@@ -42,8 +42,8 @@ Grounded in the current code; file references included where useful. See also
 
 | P | Item | Notes |
 |---|------|-------|
-| **P1** | **Publish/onboarding nudge** | New events are Draft (no uploads accepted). First-time photographers will share a QR that "doesn't work." Add a clear "Publish to start collecting" prompt + the QR/share step in the create flow. |
-| **P1** | Moderation load-more (same work as the P0 bug) | Plus bulk-select-all-on-page and keyboard shortcuts for fast scanning. |
+| ~~P1~~ ✅ | **Publish/onboarding nudge** | **Shipped.** `EventStatusBanner` on every event tab when not Active — Draft gets a one-click "Publish now" (`publishEventAction`), Closed links to Settings. |
+| **P2** | Moderation bulk-select-all + keyboard shortcuts | Load-more shipped with the P0 bug; faster-scanning ergonomics remain. |
 | **P2** | `next/image` for galleries | Currently raw `<img>` everywhere (LCP/bandwidth). Needs `remotePatterns` for R2; signed-URL churn complicates caching — evaluate. |
 | **P2** | Guest "finish later" polish + clearer per-file error messaging | The flow exists; tighten copy and retry affordances. |
 | **P2** | Single-item / selected-items download (not just full ZIP export) | Common photographer ask. |
@@ -120,8 +120,8 @@ These are the bar for taking money:
 4. **Moderation pagination** (P0 bug) — the core flow breaks past 50 uploads.
 5. **HEIC verified end-to-end on the worker** (P0 bug) — iPhone is the default camera.
 6. **Worker hosted + monitored** (it's the backbone; if it's down, nothing processes
-   and exports never complete) — plus basic error monitoring so you find out before
-   the customer does.
+   and exports never complete). A heartbeat + `GET /api/health` now exist — point an
+   uptime monitor at it. Still add app error monitoring (e.g. Sentry).
 7. **Decide & implement event-delete data semantics** (P1, P0 if you promise deletion).
 8. **Billing** to actually charge (Stripe) — prerequisite, not a fix.
 
