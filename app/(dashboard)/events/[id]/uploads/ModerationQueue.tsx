@@ -1,37 +1,64 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Button, Card, CardContent, EmptyState, StatusPill } from '@/components/ui'
+import { useRouter } from 'next/navigation'
+import { Button, Card, CardContent, EmptyState, Spinner, StatusPill } from '@/components/ui'
 import { CheckIcon, CloseIcon, ImageIcon, InboxIcon, PlayIcon, RetryIcon } from '@/components/ui/icons'
 import { bulkModerateAction, moderateUploadAction } from '@/lib/moderation/actions'
 import type { ModerationCounts, ModerationDecision } from '@/lib/db/queries/moderation'
 import type { ModerationStatus } from '@/lib/db/types'
-
-export interface QueueItem {
-  id: string
-  mediaType: 'photo' | 'video'
-  status: ModerationStatus
-  sizeLabel: string
-  timeLabel: string
-  uploaderName: string | null
-  durationLabel?: string
-  thumbUrl: string | null
-}
-
-type TypeFilter = 'all' | 'photo' | 'video'
+import type { ModerationPage, ModerationTypeFilter, QueueItem } from '@/lib/moderation/types'
 
 interface Props {
   eventId: string
   status: ModerationStatus
-  mediaType: TypeFilter
+  mediaType: ModerationTypeFilter
   counts: ModerationCounts
-  items: QueueItem[]
+  initial: ModerationPage
 }
 
-export function ModerationQueue({ eventId, status, mediaType, counts, items }: Props) {
+export function ModerationQueue({ eventId, status, mediaType, counts, initial }: Props) {
+  const router = useRouter()
+  const [items, setItems] = useState<QueueItem[]>(initial.items)
+  const [nextOffset, setNextOffset] = useState<number | null>(initial.nextOffset)
+  const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
+  const loadingRef = useRef(false)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  const loadMore = useCallback(async () => {
+    if (loadingRef.current || nextOffset == null) return
+    loadingRef.current = true
+    setLoading(true)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/uploads?status=${status}&type=${mediaType}&offset=${nextOffset}`,
+      )
+      if (res.ok) {
+        const page = (await res.json()) as ModerationPage
+        setItems((prev) => [...prev, ...page.items])
+        setNextOffset(page.nextOffset)
+      }
+    } finally {
+      loadingRef.current = false
+      setLoading(false)
+    }
+  }, [eventId, status, mediaType, nextOffset])
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore()
+      },
+      { rootMargin: '600px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [loadMore])
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -42,18 +69,34 @@ export function ModerationQueue({ eventId, status, mediaType, counts, items }: P
     })
   }
 
-  function decide(uploadId: string, decision: ModerationDecision) {
+  // Every available decision moves an item out of the current status filter, so we
+  // optimistically remove it, then refresh to resync the header counts. On failure
+  // we put it back.
+  function decide(item: QueueItem, decision: ModerationDecision) {
+    setItems((prev) => prev.filter((i) => i.id !== item.id))
+    setSelected((prev) => {
+      if (!prev.has(item.id)) return prev
+      const next = new Set(prev)
+      next.delete(item.id)
+      return next
+    })
     startTransition(async () => {
-      await moderateUploadAction(eventId, uploadId, decision)
+      const res = await moderateUploadAction(eventId, item.id, decision)
+      if (!res.ok) setItems((prev) => [item, ...prev])
+      router.refresh()
     })
   }
 
   function bulkDecide(decision: ModerationDecision) {
     const ids = Array.from(selected)
     if (ids.length === 0) return
+    const removed = items.filter((i) => selected.has(i.id))
+    setItems((prev) => prev.filter((i) => !selected.has(i.id)))
+    setSelected(new Set())
     startTransition(async () => {
       const res = await bulkModerateAction(eventId, ids, decision)
-      if (res.ok) setSelected(new Set())
+      if (!res.ok) setItems((prev) => [...removed, ...prev])
+      router.refresh()
     })
   }
 
@@ -83,12 +126,18 @@ export function ModerationQueue({ eventId, status, mediaType, counts, items }: P
                 item={item}
                 selected={selected.has(item.id)}
                 onToggle={() => toggle(item.id)}
-                onApprove={() => decide(item.id, 'approve')}
-                onReject={() => decide(item.id, 'reject')}
-                onRestore={() => decide(item.id, 'restore')}
+                onApprove={() => decide(item, 'approve')}
+                onReject={() => decide(item, 'reject')}
+                onRestore={() => decide(item, 'restore')}
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {nextOffset != null && (
+        <div ref={sentinelRef} className="flex justify-center py-6">
+          {loading && <Spinner className="size-5 text-muted-foreground" label="Loading more" />}
         </div>
       )}
 
@@ -124,7 +173,7 @@ function Filters({
 }: {
   eventId: string
   status: ModerationStatus
-  mediaType: TypeFilter
+  mediaType: ModerationTypeFilter
   counts: ModerationCounts
 }) {
   const base = `/events/${eventId}/uploads`
