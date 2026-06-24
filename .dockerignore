@@ -1,0 +1,17 @@
+# Keep the build context small and avoid copying host secrets/artifacts.
+node_modules
+.next
+out
+.git
+.env
+.env.*
+coverage
+test-results
+playwright-report
+*.log
+.DS_Store
+# Not needed by the worker runtime.
+tests
+docs
+public
+.claude

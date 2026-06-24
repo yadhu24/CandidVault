@@ -1,0 +1,28 @@
+# Background worker image for CandidVault — thumbnails, metadata extraction, and
+# ZIP exports. The worker is a long-running poll loop, so host it on an always-on
+# platform (Railway / Render / Fly / a small VM), NOT on Vercel. See the README
+# "Deployment" section.
+FROM node:20-bookworm-slim
+
+# ffmpeg/ffprobe enable video posters + duration/dimensions. Optional — the worker
+# degrades gracefully (placeholder poster) without them — but recommended.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install deps first for better layer caching. Dev deps are intentionally included:
+# the worker runs TypeScript directly via tsx (a devDependency); there is no build.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+# Affects the pg SSL decision and general library behavior; env (DATABASE_URL,
+# R2_*) is injected by the host at runtime.
+ENV NODE_ENV=production
+
+# No HTTP port — this is a worker, not a web service. The process polls the DB
+# queue and exits cleanly on SIGTERM (the platform can restart it freely).
+CMD ["npm", "run", "worker"]
