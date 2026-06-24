@@ -10,6 +10,7 @@ import {
 } from '@/lib/db/queries/albums'
 import { getEventByIdForPhotographer } from '@/lib/db/queries/events'
 import { getUploadById, setUploadFavorite } from '@/lib/db/queries/uploads'
+import { AlbumSchema } from '@/lib/validation/albums'
 
 export interface ActionResult {
   ok: boolean
@@ -27,12 +28,17 @@ export async function createAlbumAction(
   name: string,
   description?: string,
 ): Promise<ActionResult> {
-  const trimmed = name.trim()
-  if (!trimmed) return { ok: false, error: 'Give the album a name.' }
-  if (trimmed.length > 120) return { ok: false, error: 'That name is too long.' }
+  const parsed = AlbumSchema.safeParse({ name, description: description ?? '' })
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid album.' }
+  }
   if (!(await ownsEvent(eventId))) return { ok: false, error: 'Event not found.' }
 
-  await createAlbum({ eventId, name: trimmed, description: description?.trim() || null })
+  await createAlbum({
+    eventId,
+    name: parsed.data.name,
+    description: parsed.data.description?.trim() || null,
+  })
   revalidatePath(`/events/${eventId}/albums`)
   return { ok: true }
 }

@@ -3,7 +3,7 @@ import type { ModerationActionRecord, ModerationStatus } from '../types'
 
 // Each decision maps to the moderation_status it sets; the same verb is written to
 // the moderation_actions audit trail. `restore` returns an item to the queue.
-const DECISION_TO_STATUS = {
+export const DECISION_TO_STATUS = {
   approve: 'approved',
   reject: 'rejected',
   restore: 'pending',
