@@ -29,12 +29,44 @@ function requiresSsl(connectionString: string | undefined): boolean {
   }
 }
 
+// Connection-pool tuning. Conservative defaults sized for the Supabase Supavisor
+// session pooler (one server connection pinned per client connection): keep the
+// per-process cap small, fail fast instead of waiting forever for a connection,
+// release idle connections promptly, and recycle long-lived ones so the pooler can
+// rebalance. Tune `max` per deployment via DATABASE_POOL_MAX (small for the
+// horizontally-scaled web app, a bit higher for the single long-lived worker).
+const DEFAULT_POOL_MAX = 5
+const POOL_IDLE_TIMEOUT_MS = 10_000
+const POOL_CONNECTION_TIMEOUT_MS = 10_000
+const POOL_MAX_USES = 7_500
+
+function poolMax(): number {
+  const raw = Number(process.env.DATABASE_POOL_MAX)
+  return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_POOL_MAX
+}
+
 export function getDb(): Pool {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL
     pool = new Pool({
       connectionString,
       ssl: requiresSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+      max: poolMax(),
+      idleTimeoutMillis: POOL_IDLE_TIMEOUT_MS,
+      connectionTimeoutMillis: POOL_CONNECTION_TIMEOUT_MS,
+      maxUses: POOL_MAX_USES,
+      keepAlive: true,
+      // Tags connections in pg_stat_activity so app vs worker traffic is
+      // distinguishable on the Supabase dashboard. Set PG_APPLICATION_NAME per
+      // deployment (e.g. candidvault-web / candidvault-worker).
+      application_name: process.env.PG_APPLICATION_NAME ?? 'candidvault',
+    })
+    // A pooled connection can emit 'error' while idle (the server or pooler closes
+    // it). pg surfaces this on the Pool; with no handler Node treats it as an
+    // unhandled 'error' and crashes the process. Log it and let pg discard the bad
+    // client — getDb() callers transparently get a fresh one.
+    pool.on('error', (err) => {
+      console.error('[db] idle pool client error', { name: err.name })
     })
   }
   return pool
