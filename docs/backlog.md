@@ -101,6 +101,7 @@ now so features slot in later — mostly seams, not features:
   build; image ships dev deps). Fine for pilot, revisit for scale.
 - **R2 cleanup deferred** — relies on lifecycle rules; event-delete leaves orphans.
 - **Per-event cap non-transactional** — small overshoot possible.
+- **EXIF capture-date/camera not extracted** (P2) — `lib/jobs/process-upload.ts` promotes dimensions, duration, and checksum (+ thumbnails) but not EXIF `DateTimeOriginal` (→ `captured_at`) or camera make/model; gallery sorts by upload time. Deferred from T3.3; needs an EXIF parser (sharp exposes only the raw buffer).
 - **Unwired scaffolding** — `setEventCover`, `incrementQrScan`, `listQrCodesByEvent`.
 - **No CI, no error monitoring, no health endpoint.**
 - **Prototype/design-system routes ship publicly** (`/prototype/*`, `/design-system`).
