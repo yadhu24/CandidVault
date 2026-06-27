@@ -32,12 +32,17 @@ export const requirePhotographer = cache(async (): Promise<PhotographerContext> 
     throw new Error('Authenticated user is missing an email address')
   }
 
-  const existing = await getUserById(authUser.id)
+  // Fetch the app user and their profile in parallel — both are keyed by the auth
+  // id, so they don't depend on each other. Saves one round trip to a possibly
+  // distant DB on every authenticated request.
+  const [existing, existingProfile] = await Promise.all([
+    getUserById(authUser.id),
+    getPhotographerProfile(authUser.id),
+  ])
   if (!existing) {
     return bootstrapPhotographer({ id: authUser.id, email })
   }
 
-  const profile =
-    (await getPhotographerProfile(existing.id)) ?? (await ensurePhotographerProfile(existing.id))
+  const profile = existingProfile ?? (await ensurePhotographerProfile(existing.id))
   return { user: existing, profile }
 })

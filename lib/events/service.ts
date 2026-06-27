@@ -63,12 +63,14 @@ export type PublicEventResolution =
 // when the event is active and its QR link hasn't been revoked. A missing QR row
 // (owner never opened the overview) is treated as not-revoked.
 export async function resolvePublicEvent(slug: string): Promise<PublicEventResolution> {
-  const event = await getEventBySlug(slug)
+  // The QR row's token is the event slug (see ensureEventQrCode), so the QR lookup
+  // is keyed by the same `slug` and need not wait for the event read — run both in
+  // parallel to save a round trip on the public upload path (hit on every scan).
+  const [event, qr] = await Promise.all([getEventBySlug(slug), getQrCodeByToken(slug)])
   if (!event) return { state: 'not_found' }
   if (event.status === 'closed') return { state: 'inactive', event, reason: 'closed' }
   if (event.status !== 'active') return { state: 'inactive', event, reason: 'not_published' }
 
-  const qr = await getQrCodeByToken(event.slug)
   if (qr && !qr.isActive) return { state: 'inactive', event, reason: 'revoked' }
 
   return { state: 'ok', event }
