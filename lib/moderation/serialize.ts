@@ -1,6 +1,6 @@
 import { listUploadsForModeration, type ModerationUpload } from '@/lib/db/queries/uploads'
 import type { MediaType, ModerationStatus } from '@/lib/db/types'
-import { createDownloadPresignedUrl } from '@/lib/storage'
+import { createDownloadPresignedUrl, DERIVATIVE_DOWNLOAD_EXPIRY_SECONDS } from '@/lib/storage'
 import { formatBytes, formatDuration, formatRelativeTime } from '@/lib/uploads/format'
 import type { ModerationPage, QueueItem } from './types'
 
@@ -16,7 +16,9 @@ async function toQueueItem(u: ModerationUpload): Promise<QueueItem> {
     timeLabel: formatRelativeTime(u.createdAt),
     uploaderName: u.uploaderName,
     durationLabel: u.durationSeconds ? formatDuration(u.durationSeconds) : undefined,
-    thumbUrl: u.thumbnailKey ? await createDownloadPresignedUrl(u.thumbnailKey) : null,
+    thumbUrl: u.thumbnailKey
+      ? await createDownloadPresignedUrl(u.thumbnailKey, DERIVATIVE_DOWNLOAD_EXPIRY_SECONDS)
+      : null,
   }
 }
 

@@ -1,13 +1,14 @@
 import { listApprovedUploads, type GalleryUpload } from '@/lib/db/queries/uploads'
 import type { MediaType } from '@/lib/db/types'
-import { createDownloadPresignedUrl } from '@/lib/storage'
+import { createDownloadPresignedUrl, DERIVATIVE_DOWNLOAD_EXPIRY_SECONDS } from '@/lib/storage'
 import { formatBytes, formatDuration, formatRelativeTime } from '@/lib/uploads/format'
 import type { GalleryItem, GalleryPage, GallerySort } from './types'
 
 export const GALLERY_PAGE_SIZE = 24
 
+// Longer TTL so thumbnails/previews don't break in a gallery tab left open a while.
 const presignOrNull = (key: string | null | undefined): Promise<string | null> =>
-  key ? createDownloadPresignedUrl(key) : Promise.resolve(null)
+  key ? createDownloadPresignedUrl(key, DERIVATIVE_DOWNLOAD_EXPIRY_SECONDS) : Promise.resolve(null)
 
 // Grid uses the thumbnail; modal uses the preview (poster for video). Both fall
 // back through available variants so an item still renders if one is missing.

@@ -1,5 +1,9 @@
 export { getR2Client } from './r2'
-export { createUploadPresignedUrl, createDownloadPresignedUrl } from './presigned'
+export {
+  createUploadPresignedUrl,
+  createDownloadPresignedUrl,
+  DERIVATIVE_DOWNLOAD_EXPIRY_SECONDS,
+} from './presigned'
 export { headObject, deleteObject, getObjectBuffer, putObject, type ObjectHead } from './objects'
 export {
   createMultipartUpload,
