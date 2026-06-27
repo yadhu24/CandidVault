@@ -17,6 +17,13 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Fail the build loudly if this sharp build can't decode HEIC/HEIF — iPhone's
+# default capture format. Without it, iPhone uploads would silently never get a
+# viewable JPEG/thumbnail (backlog P0). This turns a silent runtime failure into a
+# build failure: if it ever trips, install global libvips with libheif and set
+# SHARP_FORCE_GLOBAL_LIBVIPS=1.
+RUN node -e "const s=require('sharp');const ok=s.format.heif&&s.format.heif.input&&s.format.heif.input.buffer;if(!ok){console.error('FATAL: sharp on this image cannot decode HEIC/HEIF');process.exit(1)}console.log('sharp HEIC decode OK (libvips '+s.versions.vips+')')"
+
 COPY . .
 
 # Affects the pg SSL decision and general library behavior; env (DATABASE_URL,
